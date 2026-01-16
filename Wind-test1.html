@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>IEM METAR Layers – OSM + SD Dense Wind</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<!-- Wind particles (leaflet-velocity) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet-velocity/dist/leaflet-velocity.min.css"/>
+
+<style>
+  html, body { height:100%; margin:0; }
+  #map { height:100%; background:#fff; }
+
+  .metar-dot{
+    width:26px;height:26px;border-radius:50%;
+    background:#fff;border:2px solid #333;
+    display:flex;align-items:center;justify-content:center;
+    font:700 12px/1 Arial, sans-serif;color:#111;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  }
+  .metar-pill{
+    background:#fff;border:1px solid #333;
+    border-radius:10px;padding:3px 6px;
+    font:700 11px/1 Arial, sans-serif;color:#111;
+    white-space:nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,.20);
+  }
+
+  /* Moved to top-right so it won't cover zoom controls */
+  .status {
+    position:absolute;
+    top:10px;
+    right:10px;
+    left:auto;
+    z-index:9999;
+    background:rgba(255,255,255,0.95);
+    border:1px solid #ccc;
+    border-radius:10px;
+    padding:6px 10px;
+    font:600 12px/1.2 Arial, sans-serif;
+  }
+</style>
+</head>
+
+<body>
+<div id="map"></div>
+<div id="status" class="status">Loading…</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-velocity/dist/leaflet-velocity.min.js"></script>
+<script>
+  const statusEl = document.getElementById("status");
+
+  // ---- Map
+  const map = L.map('map', { zoomControl:true }).setView([44.3,-99.5], 7);
+
+  // OpenStreetMap tiles (roads/towns) with required attribution.
+  const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Remove Leaflet prefix/link so students don’t click through to leafletjs.com.
+  map.attributionControl.setPrefix(false);
+
+  // ---- Layers
+  // State boundaries (simple outline overlay)
+  const boundariesLayer = L.geoJSON(null, {
+    style: { color: "#444", weight: 1, opacity: 0.8, fill: false }
+  }).addTo(map);
+
+  const tempLayer = L.layerGroup().addTo(map);
+  const dewLayer  = L.layerGroup();
+  const windLayer = L.layerGroup().addTo(map);
+  const visLayer  = L.layerGroup();
+  const presLayer = L.layerGroup();
+  const wxLayer   = L.layerGroup();
+
+  // Wind particles (lazy-loaded from a JSON file you generated in Colab)
+  let windParticlesLayer = null;
+
+  const layerControl = L.control.layers(null,{
+    "State Boundaries": boundariesLayer,
+    "Temperature (°F)": tempLayer,
+    "Dew Point (°F)": dewLayer,
+    "Wind (mph)": windLayer,
+    "Visibility": visLayer,
+    "Pressure": presLayer,
+    "Weather": wxLayer
+  },{collapsed:false}).addTo(map);
+
+  // Boundaries source (Natural Earth Admin-1; good enough for a classroom outline)
+  const statesGeoJSON = "https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_admin_1_states_provinces_scale_rank.geojson";
+  fetch(statesGeoJSON)
+    .then(r => r.json())
+    .then(gj => boundariesLayer.addData(gj))
+    .catch(err => console.warn("Boundaries failed:", err));
+
+  // ---- Networks
+  // Core Midwest ASOS + more SD density via SD_RWIS.
+  const networks = [
+    "SD_ASOS","MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS",
+    "SD_RWIS"
+  ];
+
+  const STS = "2018-04-14T16:00:00Z";
+  const ETS = "2018-04-14T16:00:00Z";
+
+  const url =
+    "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
+    + "?data=tmpf&data=dwpf&data=drct&data=sknt&data=gust&data=vsby&data=alti&data=wxcodes"
+    + `&network=${encodeURIComponent(networks.join(","))}`
+    + "&report_type=3"
+    + "&latlon=yes&format=onlycomma&tz=UTC"
+    + `&sts=${encodeURIComponent(STS)}`
+    + `&ets=${encodeURIComponent(ETS)}`
+    + "&missing=empty";
+
+  // ---- Helpers
+  function parseCSV(text){
+    const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith("#"));
+    if (lines.length < 2) return [];
+    const header = lines[0].split(",");
+    const rows = [];
+    for (let i=1; i<lines.length; i++){
+      const cols = lines[i].split(",");
+      const obj = {};
+      header.forEach((h, idx) => obj[h] = cols[idx] ?? "");
+      rows.push(obj);
+    }
+    return rows;
+  }
+
+  function num(v){
+    const s = (v ?? "").toString().trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function dotIcon(txt){
+    return L.divIcon({
+      className:"",
+      html:`<div class="metar-dot">${txt}</div>`,
+      iconSize:[26,26],
+      iconAnchor:[13,13]
+    });
+  }
+
+  function pillIcon(txt){
+    return L.divIcon({ className:"", html:`<div class="metar-pill">${txt}</div>` });
+  }
+
+  function windArrow(deg){
+    if (deg == null) return "•";
+    const dirs = ["↑","↗","→","↘","↓","↙","←","↖"];
+    return dirs[Math.round((deg % 360)/45) % 8];
+  }
+
+  function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
+
+  // ---- Wind particles (from Colab -> JSON -> GitHub)
+  // Put the JSON file in the SAME folder as this HTML when using GitHub Pages.
+  // Example repo layout:
+  //   /index.html
+  //   /narr_10m_wind_20180414_daily_mph.json
+  const windJsonUrl = "./narr_10m_wind_20180414_daily_mph.json";
+
+  // Adapter: convert our compact grid JSON into the format leaflet-velocity expects.
+  function toVelocityData(grid){
+    const nx = Number(grid.nx);
+    const ny = Number(grid.ny);
+    const lon0 = Number(grid.lon0);
+    const lon1 = Number(grid.lon1);
+    const lat0 = Number(grid.lat0);
+    const lat1 = Number(grid.lat1);
+    const dx = (nx > 1) ? ((lon1 - lon0) / (nx - 1)) : 1;
+    const dy = (ny > 1) ? ((lat1 - lat0) / (ny - 1)) : 1;
+
+    const refTime = (grid.date ? `${grid.date}T00:00:00Z` : new Date().toISOString());
+    const headerBase = {
+      lo1: lon0,
+      la1: lat0,
+      dx: dx,
+      dy: dy,
+      nx: nx,
+      ny: ny,
+      refTime: refTime,
+      forecastTime: 0,
+      parameterCategory: 2
+    };
+
+    return [
+      { header: { ...headerBase, parameterNumber: 2, parameterNumberName: "u_wind" }, data: grid.u },
+      { header: { ...headerBase, parameterNumber: 3, parameterNumberName: "v_wind" }, data: grid.v }
+    ];
+  }
+
+  async function loadWindParticles(){
+    const resp = await fetch(windJsonUrl, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`Wind JSON HTTP ${resp.status}`);
+    const grid = await resp.json();
+
+    const velData = toVelocityData(grid);
+    windParticlesLayer = L.velocityLayer({
+      data: velData,
+      maxVelocity: 80,        // 'mph-ish' ceiling (your grid is mph)
+      velocityScale: 0.01,
+      particleAge: 90,
+      particleMultiplier: 1 / 300,
+      lineWidth: 2,
+      displayValues: false
+    });
+
+    // Add as an optional layer (checkbox)
+    layerControl.addOverlay(windParticlesLayer, "Wind particles");
+    console.log("Wind particles loaded. Toggle 'Wind particles' in layer control.");
+  }
+
+  function popupHTML(r){
+    const drct = num(r.drct);
+    const sknt = num(r.sknt);
+    const gust = num(r.gust);
+    const mph  = sknt != null ? Math.round(ktToMph(sknt)) : "—";
+    const gmph = gust != null ? Math.round(ktToMph(gust)) : null;
+
+    return `
+      <div style="font:600 13px/1.3 Arial,sans-serif">
+        <div style="font-size:14px;margin-bottom:4px"><b>${r.station || "Station"}</b></div>
+        <div style="opacity:.85;margin-bottom:6px">Valid: ${r.valid || ""} UTC</div>
+        <div>Temp: <b>${r.tmpf || "—"}</b> °F</div>
+        <div>Dew Pt: <b>${r.dwpf || "—"}</b> °F</div>
+        <div>Wind: <b>${drct ?? "—"}</b>° @ <b>${mph}</b> mph${gmph != null ? ` (gust ${gmph})` : ""}</div>
+        <div>Vis: <b>${r.vsby || "—"}</b> mi</div>
+        <div>Alt: <b>${r.alti || "—"}</b> inHg</div>
+        <div>Wx: <b>${(r.wxcodes || "").trim() || "—"}</b></div>
+      </div>
+    `;
+  }
+
+  // Rough SD bounding box – used to keep wind readable at zoom 7
+  function isInSouthDakotaApprox(lat, lon){
+    return (lat >= 42.3 && lat <= 45.95 && lon >= -104.1 && lon <= -96.3);
+  }
+
+  // Cache rows so we can re-render wind as you zoom
+  let cachedRows = [];
+
+  function renderCoreLayers(rows){
+    [tempLayer, dewLayer, visLayer, presLayer, wxLayer].forEach(l => l.clearLayers());
+
+    let plotted = 0;
+    const MAX_POINTS = 1400;
+
+    for (const r of rows){
+      if (plotted >= MAX_POINTS) break;
+
+      const lat = num(r.lat), lon = num(r.lon);
+      if (lat == null || lon == null) continue;
+
+      const tmpf = num(r.tmpf);
+      const dwpf = num(r.dwpf);
+      const vsby = num(r.vsby);
+      const alti = num(r.alti);
+      const wx   = (r.wxcodes || "").trim();
+
+      if (tmpf != null) L.marker([lat,lon],{icon:dotIcon(Math.round(tmpf))}).bindPopup(popupHTML(r)).addTo(tempLayer);
+      if (dwpf != null) L.marker([lat,lon],{icon:dotIcon(Math.round(dwpf))}).bindPopup(popupHTML(r)).addTo(dewLayer);
+      if (vsby != null) L.marker([lat,lon],{icon:pillIcon(`${vsby} mi`)}).bindPopup(popupHTML(r)).addTo(visLayer);
+      if (alti != null) L.marker([lat,lon],{icon:pillIcon(`${alti} in`)}).bindPopup(popupHTML(r)).addTo(presLayer);
+      if (wx)          L.marker([lat,lon],{icon:pillIcon(wx)}).bindPopup(popupHTML(r)).addTo(wxLayer);
+
+      plotted++;
+    }
+    return plotted;
+  }
+
+  function renderWind(rows){
+    windLayer.clearLayers();
+
+    const z = map.getZoom();
+    if (z < 6) return; // hide at zoom < 6
+
+    // Grid thinning step by zoom
+    let step = 0.30;           // zoom 7
+    if (z >= 8) step = 0.20;   // zoom 8
+    if (z >= 9) step = 0.12;   // zoom 9+
+
+    const seen = new Set();
+
+    for (const r of rows){
+      const lat = num(r.lat), lon = num(r.lon);
+      if (lat == null || lon == null) continue;
+
+      // At low zoom, only show SD winds (keeps numbers readable and “more SD”)
+      if (z <= 7 && !isInSouthDakotaApprox(lat, lon)) continue;
+
+      const drct = num(r.drct);
+      const sknt = num(r.sknt);
+      if (sknt == null && drct == null) continue;
+
+      const mph = sknt != null ? Math.round(ktToMph(sknt)) : null;
+      if (mph != null && mph < 6) continue; // skip near-calm to reduce clutter
+
+      const a = Math.round(lat / step);
+      const b = Math.round(lon / step);
+      const key = `${a}:${b}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const label = `${windArrow(drct)} ${mph ?? "—"} mph`;
+      L.marker([lat,lon],{icon:pillIcon(label)})
+        .bindPopup(popupHTML(r))
+        .addTo(windLayer);
+    }
+  }
+
+  async function load(){
+    statusEl.textContent = "Downloading observations…";
+    const resp = await fetch(url, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+
+    statusEl.textContent = "Parsing…";
+    cachedRows = parseCSV(text);
+
+    statusEl.textContent = "Drawing…";
+    const plotted = renderCoreLayers(cachedRows);
+    renderWind(cachedRows);
+
+    statusEl.textContent = `Done. Networks: ${networks.length}. Plotted ${plotted} stations. Wind shows at zoom ≥ 6 (SD only until zoom 8).`;
+
+    // Load wind particles (optional checkbox layer) if the JSON file is present.
+    loadWindParticles().catch(err => {
+      console.warn("Wind particles not loaded:", err);
+      // Keep the METAR status message; particles are optional.
+    });
+  }
+
+  map.on("zoomend", () => {
+    renderWind(cachedRows);
+  });
+
+  load().catch(err => {
+    console.error(err);
+    statusEl.textContent = `Error: ${err.message}. (If HTTP 503, IEM is rate limiting.)`;
+  });
+</script>
+</body>
+</html>
