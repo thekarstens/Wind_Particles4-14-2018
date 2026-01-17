@@ -5,11 +5,11 @@
 <title>METAR + Wind Particles (Apr 14, 2018)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Local Leaflet (self-hosted) -->
+<!-- Local Leaflet -->
 <link rel="stylesheet" href="./vendor/leaflet/leaflet.css"/>
 <script src="./vendor/leaflet/leaflet.js"></script>
 
-<!-- Local leaflet-velocity (particles) -->
+<!-- Local leaflet-velocity -->
 <link rel="stylesheet" href="./vendor/leaflet-velocity/leaflet-velocity.min.css">
 <script src="./vendor/leaflet-velocity/leaflet-velocity.min.js"></script>
 
@@ -51,18 +51,18 @@
     border-radius: 10px;
     padding: 8px 10px;
     font: 600 12px/1.2 Arial, sans-serif;
-    width: 190px;
+    width: 210px;
   }
   .legend .row{
     display:flex; align-items:center; justify-content:space-between;
     margin-top:6px;
   }
   .legend .bar{
-    height:10px; width:120px; border-radius: 6px; border:1px solid #bbb;
+    height:10px; width:130px;
+    border-radius: 6px;
+    border:1px solid #bbb;
   }
-  .legend .label{
-    width:55px; text-align:right; font-weight:700;
-  }
+  .legend small{ font-weight:700; opacity:.85; }
 </style>
 </head>
 
@@ -87,7 +87,7 @@
   map.attributionControl.setPrefix(false);
 
   // -----------------------------
-  // Utility helpers
+  // Helpers
   // -----------------------------
   function parseCSV(text){
     const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith("#"));
@@ -106,42 +106,6 @@
     if (!s) return null;
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
-  }
-
-  function clamp(x, a, b){ return Math.max(a, Math.min(b, x)); }
-
-  // Simple, kid-friendly gradients:
-  // Temp: blue (cold) -> red (warm)
-  // Dew:  tan (dry)  -> green (humid)
-  function lerp(a,b,t){ return a + (b-a)*t; }
-  function rgb(r,g,b){ return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`; }
-
-  function tempColorF(t){
-    // -20F -> 80F
-    const t0 = -20, t1 = 80;
-    const x = clamp((t - t0) / (t1 - t0), 0, 1);
-    // blue -> cyan -> yellow -> orange -> red
-    if (x < 0.33){
-      const k = x/0.33;
-      return rgb(lerp(20, 0, k), lerp(60, 200, k), lerp(200, 255, k));
-    } else if (x < 0.66){
-      const k = (x-0.33)/0.33;
-      return rgb(lerp(0, 255, k), lerp(200, 255, k), lerp(255, 0, k));
-    } else {
-      const k = (x-0.66)/0.34;
-      return rgb(lerp(255, 200, k), lerp(255, 0, k), lerp(0, 0, k));
-    }
-  }
-
-  function dewColorF(td){
-    // -20F -> 70F (very dry to muggy)
-    const d0 = -20, d1 = 70;
-    const x = clamp((td - d0) / (d1 - d0), 0, 1);
-    // tan -> yellow-green -> green
-    const r = lerp(210, 0, x);
-    const g = lerp(180, 170, x);
-    const b = lerp(120, 80, x);
-    return rgb(r,g,b);
   }
 
   function dotIconColored(txt, fill){
@@ -164,6 +128,61 @@
   }
 
   function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
+
+  // -----------------------------
+  // Your requested color ramps
+  // -----------------------------
+  function tempColorF(t){
+    const stops = [
+      {v: 10, c: [170, 220, 255]}, // light blue
+      {v: 20, c: [120, 190, 255]}, // light blue deeper
+      {v: 30, c: [0, 70, 200]},    // dark blue
+      {v: 40, c: [0, 170, 0]},     // green
+      {v: 50, c: [150, 255, 150]}, // light green
+      {v: 60, c: [255, 235, 0]},   // yellow
+      {v: 70, c: [255, 140, 0]},   // orange
+      {v: 85, c: [255, 80, 0]}     // hotter extension
+    ];
+    if (t <= stops[0].v) return `rgb(${stops[0].c.join(",")})`;
+    if (t >= stops[stops.length-1].v) return `rgb(${stops[stops.length-1].c.join(",")})`;
+
+    for (let i=0; i<stops.length-1; i++){
+      const a = stops[i], b = stops[i+1];
+      if (t >= a.v && t <= b.v){
+        const k = (t - a.v) / (b.v - a.v);
+        const r = Math.round(a.c[0] + (b.c[0]-a.c[0]) * k);
+        const g = Math.round(a.c[1] + (b.c[1]-a.c[1]) * k);
+        const bb= Math.round(a.c[2] + (b.c[2]-a.c[2]) * k);
+        return `rgb(${r},${g},${bb})`;
+      }
+    }
+    return "rgb(255,255,255)";
+  }
+
+  function dewColorF(td){
+    const stops = [
+      {v: 10, c: [90, 55, 20]},     // dark brown
+      {v: 20, c: [140, 95, 40]},    // brown
+      {v: 30, c: [200, 160, 110]},  // light brown
+      {v: 50, c: [190, 200, 140]},  // transition
+      {v: 60, c: [0, 170, 0]},      // green
+      {v: 70, c: [0, 90, 0]}        // dark green
+    ];
+    if (td <= stops[0].v) return `rgb(${stops[0].c.join(",")})`;
+    if (td >= stops[stops.length-1].v) return `rgb(${stops[stops.length-1].c.join(",")})`;
+
+    for (let i=0; i<stops.length-1; i++){
+      const a = stops[i], b = stops[i+1];
+      if (td >= a.v && td <= b.v){
+        const k = (td - a.v) / (b.v - a.v);
+        const r = Math.round(a.c[0] + (b.c[0]-a.c[0]) * k);
+        const g = Math.round(a.c[1] + (b.c[1]-a.c[1]) * k);
+        const bb= Math.round(a.c[2] + (b.c[2]-a.c[2]) * k);
+        return `rgb(${r},${g},${bb})`;
+      }
+    }
+    return "rgb(255,255,255)";
+  }
 
   function popupHTML(r){
     const drct = num(r.drct);
@@ -202,7 +221,7 @@
     "Visibility (mi)": visLayer,
     "Pressure (inHg)": presLayer,
     "Weather Codes": wxLayer
-    // "Wind particles" added after load
+    // Wind particles added after load
   };
 
   const layerControl = L.control.layers(
@@ -212,21 +231,21 @@
   ).addTo(map);
 
   // -----------------------------
-  // Legends
+  // Legends (only show when layer is enabled)
   // -----------------------------
   const tempLegend = L.control({ position:"bottomright" });
   tempLegend.onAdd = function(){
     const div = L.DomUtil.create("div", "legend");
     div.innerHTML = `
-      <div style="font-size:13px;margin-bottom:4px">Temperature (°F)</div>
+      <div style="font-size:13px;margin-bottom:4px">Temperature Colors (°F)</div>
       <div class="row">
         <div class="bar" style="background:linear-gradient(to right,
-          ${tempColorF(-20)}, ${tempColorF(10)}, ${tempColorF(32)}, ${tempColorF(50)}, ${tempColorF(80)}
+          ${tempColorF(10)}, ${tempColorF(20)}, ${tempColorF(30)}, ${tempColorF(40)}, ${tempColorF(50)}, ${tempColorF(60)}, ${tempColorF(70)}
         );"></div>
-        <div class="label">cold→warm</div>
+        <div><small>10→70</small></div>
       </div>
-      <div class="row" style="font-weight:700;opacity:.85">
-        <div>-20</div><div>32</div><div>80</div>
+      <div class="row" style="justify-content:space-between;font-weight:700;opacity:.85;margin-top:6px">
+        <div>10</div><div>30</div><div>50</div><div>70</div>
       </div>
     `;
     return div;
@@ -236,21 +255,20 @@
   dewLegend.onAdd = function(){
     const div = L.DomUtil.create("div", "legend");
     div.innerHTML = `
-      <div style="font-size:13px;margin-bottom:4px">Dew Point (°F)</div>
+      <div style="font-size:13px;margin-bottom:4px">Dew Point Colors (°F)</div>
       <div class="row">
         <div class="bar" style="background:linear-gradient(to right,
-          ${dewColorF(-20)}, ${dewColorF(10)}, ${dewColorF(40)}, ${dewColorF(60)}, ${dewColorF(70)}
+          ${dewColorF(10)}, ${dewColorF(20)}, ${dewColorF(30)}, ${dewColorF(60)}, ${dewColorF(70)}
         );"></div>
-        <div class="label">dry→humid</div>
+        <div><small>10→70</small></div>
       </div>
-      <div class="row" style="font-weight:700;opacity:.85">
-        <div>-20</div><div>40</div><div>70</div>
+      <div class="row" style="justify-content:space-between;font-weight:700;opacity:.85;margin-top:6px">
+        <div>10</div><div>30</div><div>60</div><div>70</div>
       </div>
     `;
     return div;
   };
 
-  // Show/hide legends based on which layer is active
   function updateLegends(){
     const hasTemp = map.hasLayer(tempLayer);
     const hasDew  = map.hasLayer(dewLayer);
@@ -261,7 +279,6 @@
     if (hasDew && !dewLegend._map) dewLegend.addTo(map);
     if (!hasDew && dewLegend._map) dewLegend.remove();
   }
-
   map.on("overlayadd overlayremove", updateLegends);
 
   // -----------------------------
@@ -269,8 +286,6 @@
   // -----------------------------
   const STS = "2018-04-14T16:00:00Z";
   const ETS = "2018-04-14T16:00:00Z";
-
-  // Adjust networks later (you can add more)
   const networks = ["SD_ASOS","MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS"];
 
   const metarURL =
@@ -308,23 +323,18 @@
       const alti = num(r.alti);
       const wx   = (r.wxcodes || "").trim();
 
-      // Temperature colored circle
       if (tmpf != null){
-        const fill = tempColorF(tmpf);
-        L.marker([lat,lon], { icon: dotIconColored(Math.round(tmpf), fill) })
+        L.marker([lat,lon], { icon: dotIconColored(Math.round(tmpf), tempColorF(tmpf)) })
           .bindPopup(popupHTML(r))
           .addTo(tempLayer);
       }
 
-      // Dew point colored circle
       if (dwpf != null){
-        const fill = dewColorF(dwpf);
-        L.marker([lat,lon], { icon: dotIconColored(Math.round(dwpf), fill) })
+        L.marker([lat,lon], { icon: dotIconColored(Math.round(dwpf), dewColorF(dwpf)) })
           .bindPopup(popupHTML(r))
           .addTo(dewLayer);
       }
 
-      // Station wind label
       if (sknt != null || drct != null){
         const mph = sknt != null ? Math.round(ktToMph(sknt)) : null;
         const label = `${windArrow(drct)} ${mph ?? "—"}`;
@@ -354,14 +364,12 @@
       plotted++;
     }
 
-    // Show the right legends based on default visible layers
     updateLegends();
-
     return plotted;
   }
 
   // -----------------------------
-  // Wind particles (leaflet-velocity)
+  // Wind particles
   // -----------------------------
   const windParticlesUrl = "./wind_particles_20180414.json";
 
@@ -374,22 +382,22 @@
     windParticlesLayer = L.velocityLayer({
       data: velData,
 
-      // Motion tuning (smooth for classrooms)
+      // Smooth motion for classrooms
       velocityScale: 0.004,
       particleAge: 120,
       particleMultiplier: 1/500,
-      lineWidth: 1.5,
+      lineWidth: 1.6,
 
-      // Blue → Green → Yellow → Orange
+      // Darker, higher-contrast ramp (more blues/greens)
       colorScale: [
-        "rgb(0,70,255)",
-        "rgb(0,200,255)",
-        "rgb(0,255,120)",
-        "rgb(255,255,0)",
+        "rgb(0,40,160)",
+        "rgb(0,120,255)",
+        "rgb(0,210,180)",
+        "rgb(255,220,0)",
         "rgb(255,120,0)"
       ],
       minVelocity: 0,
-      maxVelocity: 45,
+      maxVelocity: 60,
 
       displayValues: true,
       displayOptions: {
@@ -401,7 +409,6 @@
       }
     });
 
-    // Add checkbox toggle (don’t auto-enable)
     layerControl.addOverlay(windParticlesLayer, "Wind particles");
   }
 
