@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Midwest METAR + Wind Particles (Apr 2018)</title>
+<title>Midwest METAR + Wind Particles + Alerts (Apr 2018)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <link rel="stylesheet" href="./vendor/leaflet/leaflet.css"/>
@@ -22,7 +22,7 @@
     padding:10px 10px;
     font:600 12px/1.2 Arial, sans-serif;
     box-shadow: 0 2px 10px rgba(0,0,0,.10);
-    min-width: 260px;
+    min-width: 280px;
   }
   .row{ display:flex; gap:8px; align-items:center; margin-top:8px; }
   .btn{
@@ -32,8 +32,8 @@
   .btn:active{ transform: translateY(1px); }
   .mono{ font-family: ui-monospace, Menlo, Consolas, monospace; font-weight:800; }
 
-  .metar-dot{
-    width:28px;height:28px;border-radius:50%;
+  .dot{
+    border-radius:50%;
     border:2px solid #333;
     display:flex;align-items:center;justify-content:center;
     font:800 12px/1 Arial, sans-serif;color:#111;
@@ -79,10 +79,9 @@
   }).addTo(map);
   map.attributionControl.setPrefix(false);
 
-  const statusEl   = document.getElementById("status");
-  const timeLabelEl= document.getElementById("timeLabel");
-  const zoomLabelEl= document.getElementById("zoomLabel");
-
+  const statusEl    = document.getElementById("status");
+  const timeLabelEl = document.getElementById("timeLabel");
+  const zoomLabelEl = document.getElementById("zoomLabel");
   function setStatus(msg){ statusEl.textContent = msg; }
 
   // -----------------------------
@@ -111,24 +110,29 @@
   document.getElementById("backBtn").onclick = async () => {
     current = new Date(current.getTime() - stepHours*3600*1000);
     updateTimeLabel();
-    await refreshMetarsIfNeeded();
+    await refreshIfNeeded();
   };
   document.getElementById("fwdBtn").onclick = async () => {
     current = new Date(current.getTime() + stepHours*3600*1000);
     updateTimeLabel();
-    await refreshMetarsIfNeeded();
+    await refreshIfNeeded();
   };
 
   // -----------------------------
-  // Layers (NO CLUSTERING)
+  // Layers (no clustering)
   // -----------------------------
   const tempLayer = L.layerGroup().addTo(map);
   const dewLayer  = L.layerGroup();
-  const windLayer = L.layerGroup();     // sustained mph circles
-  const gustLayer = L.layerGroup();     // gust mph circles
+  const windLayer = L.layerGroup();
+  const gustLayer = L.layerGroup();
   const visLayer  = L.layerGroup();
-  const presLayer = L.layerGroup();     // trend-colored altimeter
+  const presLayer = L.layerGroup();
   const wxLayer   = L.layerGroup();
+
+  // Alerts (GeoJSON you will host in repo)
+  const alertsLayer = L.geoJSON(null, {
+    style: () => ({ weight: 2, color: "#cc0000", fillOpacity: 0.08 })
+  });
 
   let particlesLayer = null;
 
@@ -139,7 +143,8 @@
     "Wind Gusts (mph)": gustLayer,
     "Visibility (mi)": visLayer,
     "Pressure (trend)": presLayer,
-    "Weather Codes": wxLayer
+    "Weather Codes": wxLayer,
+    "Alerts (WWA)": alertsLayer
   };
 
   const layerControl = L.control.layers(
@@ -149,20 +154,18 @@
   ).addTo(map);
 
   // -----------------------------
-  // Collision thinning (fast via spatial hashing)
+  // Collision thinning (spatial hash)
   // -----------------------------
   class CollisionIndex {
     constructor(cellSizePx){
       this.cell = cellSizePx;
-      this.grid = new Map();  // key -> array of {x,y}
+      this.grid = new Map();
     }
     _key(cx, cy){ return `${cx},${cy}`; }
     _cellOf(p){ return [Math.floor(p.x / this.cell), Math.floor(p.y / this.cell)]; }
     canPlace(p, minSepPx){
       const [cx, cy] = this._cellOf(p);
       const r2 = minSepPx * minSepPx;
-
-      // Check this cell and neighbors (3x3)
       for (let dx=-1; dx<=1; dx++){
         for (let dy=-1; dy<=1; dy++){
           const key = this._key(cx+dx, cy+dy);
@@ -175,7 +178,6 @@
           }
         }
       }
-      // If clear, insert
       const key = this._key(cx, cy);
       if (!this.grid.has(key)) this.grid.set(key, []);
       this.grid.get(key).push({x:p.x, y:p.y});
@@ -183,9 +185,7 @@
     }
   }
 
-  // minimum separation by zoom (px)
   function minSepForZoom(z){
-    // Bigger sep when zoomed out, relax as zoom in
     if (z <= 4) return 54;
     if (z === 5) return 46;
     if (z === 6) return 38;
@@ -200,7 +200,7 @@
   }
 
   // -----------------------------
-  // Color ramps
+  // Colors
   // -----------------------------
   function piecewiseColor(x, stops){
     if (x == null || !Number.isFinite(x)) return "rgb(255,255,255)";
@@ -221,25 +221,25 @@
 
   function tempColorF(t){
     return piecewiseColor(t, [
-      {v: 10, c: [170, 220, 255]}, // light blue
-      {v: 20, c: [120, 190, 255]}, // deeper light blue
-      {v: 30, c: [0, 70, 200]},    // dark blue
-      {v: 40, c: [0, 170, 0]},     // green
-      {v: 50, c: [150, 255, 150]}, // light green
-      {v: 60, c: [255, 235, 0]},   // yellow
-      {v: 70, c: [255, 140, 0]},   // orange
-      {v: 85, c: [255, 80, 0]}     // extension
+      {v: 10, c: [170, 220, 255]},
+      {v: 20, c: [120, 190, 255]},
+      {v: 30, c: [0, 70, 200]},
+      {v: 40, c: [0, 170, 0]},
+      {v: 50, c: [150, 255, 150]},
+      {v: 60, c: [255, 235, 0]},
+      {v: 70, c: [255, 140, 0]},
+      {v: 85, c: [255, 80, 0]}
     ]);
   }
 
   function dewColorF(td){
     return piecewiseColor(td, [
-      {v: 10, c: [90, 55, 20]},    // dark brown
-      {v: 20, c: [140, 95, 40]},   // brown
-      {v: 30, c: [200, 160, 110]}, // light brown
-      {v: 50, c: [190, 200, 140]}, // transition
-      {v: 60, c: [0, 170, 0]},     // green
-      {v: 70, c: [0, 90, 0]}       // dark green
+      {v: 10, c: [90, 55, 20]},
+      {v: 20, c: [140, 95, 40]},
+      {v: 30, c: [200, 160, 110]},
+      {v: 50, c: [190, 200, 140]},
+      {v: 60, c: [0, 170, 0]},
+      {v: 70, c: [0, 90, 0]}
     ]);
   }
 
@@ -255,23 +255,111 @@
   }
 
   function pressureTrendColor(deltaInHg){
-    if (deltaInHg == null || !Number.isFinite(deltaInHg)) return "rgb(235,235,235)";
-    if (deltaInHg > 0.02) return "rgb(0,170,0)";    // rising
-    if (deltaInHg < -0.02) return "rgb(200,0,0)";   // falling
-    return "rgb(200,200,200)";                      // steady
+    // lighter than before
+    if (deltaInHg == null || !Number.isFinite(deltaInHg)) return "rgb(245,245,245)";
+    if (deltaInHg > 0.02)  return "rgb(195,235,195)"; // light green
+    if (deltaInHg < -0.02) return "rgb(245,200,200)"; // light red
+    return "rgb(235,235,235)";                        // light gray
   }
 
-  function dotIcon(txt, fill){
+  // Visibility fill: near zero = solid white, clear = open circle
+  function visStyle(vis){
+    if (vis == null || !Number.isFinite(vis)) return { bg:"rgba(255,255,255,1)", text:"#111" };
+    const v = Math.max(0, Math.min(10, vis));    // clamp 0..10
+    const alpha = 1 - (v / 10);                  // 0..1 (clear -> 0)
+    return { bg:`rgba(255,255,255,${alpha.toFixed(3)})`, text:"#111" };
+  }
+
+  // -----------------------------
+  // Icons (variable size)
+  // -----------------------------
+  function dotIcon(txt, fill, size=28, fontSize=12, borderColor="#333"){
     return L.divIcon({
       className:"",
-      html:`<div class="metar-dot" style="background:${fill}">${txt}</div>`,
-      iconSize:[28,28],
-      iconAnchor:[14,14]
+      html:`<div class="dot"
+                style="width:${size}px;height:${size}px;
+                       background:${fill};
+                       border-color:${borderColor};
+                       font-size:${fontSize}px;">${txt}</div>`,
+      iconSize:[size,size],
+      iconAnchor:[size/2,size/2]
     });
   }
 
   // -----------------------------
-  // METAR fetch (SD first, then rest) + pressure trend (T vs T-3h)
+  // Parsing helpers
+  // -----------------------------
+  function num(v){
+    const s = (v ?? "").toString().trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+  function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
+
+  // Parse visibility strings like "1/4", "1 1/2", "M1/4"
+  function parseVisMiles(raw){
+    if (raw == null) return { miles:null, label:"" };
+    let s = String(raw).trim();
+    if (!s) return { miles:null, label:"" };
+
+    // Common METAR-ish forms
+    if (s.startsWith("M")) s = s.slice(1); // "M1/4" -> treat like 1/4
+    s = s.replace(/\s+/g, " ");
+
+    // Pure number
+    const n = Number(s);
+    if (Number.isFinite(n)) return { miles:n, label:formatVisLabel(n) };
+
+    // "a b/c"
+    const parts = s.split(" ");
+    let whole = 0;
+    let frac = null;
+
+    if (parts.length === 2){
+      whole = Number(parts[0]);
+      frac = parts[1];
+    } else {
+      frac = parts[0];
+    }
+
+    if (frac && frac.includes("/")){
+      const [a,b] = frac.split("/").map(Number);
+      if (Number.isFinite(a) && Number.isFinite(b) && b !== 0){
+        const val = (Number.isFinite(whole) ? whole : 0) + (a/b);
+        return { miles:val, label:formatVisLabel(val) };
+      }
+    }
+
+    // Fallback: return raw label
+    return { miles:null, label:String(raw).trim() };
+  }
+
+  // Convert a number to a nice fraction label (1/8, 1/4, 1/2, 3/4, 1 1/2)
+  function formatVisLabel(x){
+    if (!Number.isFinite(x)) return "";
+    if (x >= 10) return "10+";
+
+    // Snap to nearest 1/8 for small vis
+    const denom = 8;
+    const whole = Math.floor(x);
+    const frac = x - whole;
+    const nume = Math.round(frac * denom);
+
+    if (nume === 0) return String(whole);
+    if (nume === denom) return String(whole + 1);
+
+    const gcd = (a,b)=>b?gcd(b,a%b):a;
+    const g = gcd(nume, denom);
+    const n = nume / g;
+    const d = denom / g;
+
+    if (whole === 0) return `${n}/${d}`;
+    return `${whole} ${n}/${d}`;
+  }
+
+  // -----------------------------
+  // METAR fetch: SD first, then rest + pressure trend (T vs T-3h)
   // -----------------------------
   const reportType = 3;
   const SD_ONLY = ["SD_ASOS"];
@@ -301,15 +389,6 @@
     });
   }
 
-  function num(v){
-    const s = (v ?? "").toString().trim();
-    if (!s) return null;
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
-
   async function fetchRows(d, networks){
     const resp = await fetch(asosURL(d, networks), { cache:"no-store" });
     if (!resp.ok) throw new Error(`METAR HTTP ${resp.status}`);
@@ -317,21 +396,30 @@
   }
 
   function popupHTML(r, dAlt){
+    const tmp = num(r.tmpf);
+    const dew = num(r.dwpf);
     const sknt = num(r.sknt);
     const gust = num(r.gust);
+    const alti = num(r.alti);
+
     const mph  = sknt != null ? Math.round(ktToMph(sknt)) : "—";
     const gmh  = gust != null ? Math.round(ktToMph(gust)) : "—";
+    const altTxt = alti != null ? alti.toFixed(2) : "—";
     const dTxt = (dAlt == null) ? "—" : `${dAlt > 0 ? "+" : ""}${dAlt.toFixed(2)} in/3h`;
+
+    const visObj = parseVisMiles(r.vsby);
+    const visTxt = (visObj.label || r.vsby || "—");
+
     return `
       <div style="font:600 13px/1.3 Arial,sans-serif">
         <div style="font-size:14px;margin-bottom:4px"><b>${r.station || "Station"}</b></div>
         <div style="opacity:.85;margin-bottom:6px">Valid: ${r.valid || ""} UTC</div>
-        <div>Temp: <b>${r.tmpf || "—"}</b> °F</div>
-        <div>Dew Pt: <b>${r.dwpf || "—"}</b> °F</div>
+        <div>Temp: <b>${tmp == null ? "—" : Math.round(tmp)}</b> °F</div>
+        <div>Dew Pt: <b>${dew == null ? "—" : Math.round(dew)}</b> °F</div>
         <div>Wind: <b>${mph}</b> mph (gust <b>${gmh}</b>)</div>
-        <div>Altimeter: <b>${r.alti || "—"}</b> inHg</div>
+        <div>Vis: <b>${visTxt}</b> mi</div>
+        <div>Altimeter: <b>${altTxt}</b> inHg</div>
         <div>Alt trend (3h): <b>${dTxt}</b></div>
-        <div>Vis: <b>${r.vsby || "—"}</b> mi</div>
         <div>Wx: <b>${(r.wxcodes || "").trim() || "—"}</b></div>
       </div>
     `;
@@ -345,21 +433,52 @@
       map.hasLayer(gustLayer) ||
       map.hasLayer(visLayer)  ||
       map.hasLayer(presLayer) ||
-      map.hasLayer(wxLayer)
+      map.hasLayer(wxLayer)   ||
+      map.hasLayer(alertsLayer)
     );
   }
 
-  async function refreshMetarsIfNeeded(){
+  async function refreshIfNeeded(){
     if (!anyOverlayVisible()) return;
-    await refreshMetars();
+    await refreshAll();
   }
 
-  async function refreshMetars(){
+  // -----------------------------
+  // Alerts (WWA) loader
+  // -----------------------------
+  function alertsFileNameForTime(d){
+    // You will create these GeoJSON files in your repo, e.g.:
+    // alerts_2018-04-14T22Z.geojson
+    const Y = d.getUTCFullYear();
+    const M = String(d.getUTCMonth()+1).padStart(2,"0");
+    const D = String(d.getUTCDate()).padStart(2,"0");
+    const H = String(d.getUTCHours()).padStart(2,"0");
+    return `./alerts_${Y}-${M}-${D}T${H}Z.geojson`;
+  }
+
+  async function loadAlerts(){
+    if (!map.hasLayer(alertsLayer)) return;
+    const url = alertsFileNameForTime(current);
+    try{
+      const r = await fetch(url, { cache:"no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const gj = await r.json();
+      alertsLayer.clearLayers();
+      alertsLayer.addData(gj);
+    } catch(e){
+      // If file doesn't exist yet, just keep layer empty.
+      alertsLayer.clearLayers();
+    }
+  }
+
+  // -----------------------------
+  // Main refresh
+  // -----------------------------
+  async function refreshAll(){
     setStatus("Loading METARs…");
 
     const prev = new Date(current.getTime() - stepHours*3600*1000);
 
-    // Fetch SD first then rest (both now and prev)
     const [sdNow, restNow, sdPrev, restPrev] = await Promise.all([
       fetchRows(current, SD_ONLY),
       fetchRows(current, REST),
@@ -378,7 +497,7 @@
       if (st && a != null) prevAlt.set(st, a);
     }
 
-    // Clear only layers that are visible (saves time)
+    // Clear visible layers only
     const visible = {
       temp: map.hasLayer(tempLayer),
       dew:  map.hasLayer(dewLayer),
@@ -400,6 +519,7 @@
     zoomLabelEl.textContent = String(z);
 
     const minSep = minSepForZoom(z);
+
     // Separate collision indexes per layer
     const idxTemp = new CollisionIndex(Math.max(24, minSep));
     const idxDew  = new CollisionIndex(Math.max(24, minSep));
@@ -410,8 +530,7 @@
     const idxWx   = new CollisionIndex(Math.max(24, minSep));
 
     let scanned = 0;
-    let drawn = 0;
-    const HARD_CAP = 3500; // scan cap (safety)
+    const HARD_CAP = 3500;
 
     for (const r of rowsNow){
       if (scanned >= HARD_CAP) break;
@@ -425,98 +544,104 @@
       const prevA = st ? prevAlt.get(st) : null;
       const dAlt = (alti != null && prevA != null) ? (alti - prevA) : null;
 
-      // Temperature
+      // Temp (whole number)
       if (visible.temp){
         const tmpf = num(r.tmpf);
         if (tmpf != null){
           if (allowByCollision(idxTemp, lat, lon, minSep)){
-            L.marker([lat,lon], { icon: dotIcon(Math.round(tmpf), tempColorF(tmpf)) })
+            L.marker([lat,lon], { icon: dotIcon(String(Math.round(tmpf)), tempColorF(tmpf), 28, 12) })
               .bindPopup(popupHTML(r, dAlt)).addTo(tempLayer);
-            drawn++;
           }
         }
       }
 
-      // Dew point
+      // Dew (whole number)
       if (visible.dew){
         const dwpf = num(r.dwpf);
         if (dwpf != null){
           if (allowByCollision(idxDew, lat, lon, minSep)){
-            L.marker([lat,lon], { icon: dotIcon(Math.round(dwpf), dewColorF(dwpf)) })
+            L.marker([lat,lon], { icon: dotIcon(String(Math.round(dwpf)), dewColorF(dwpf), 28, 12) })
               .bindPopup(popupHTML(r, dAlt)).addTo(dewLayer);
           }
         }
       }
 
-      // Wind mph (colored like particles)
+      // Wind mph (colored)
       if (visible.wind){
         const sknt = num(r.sknt);
         if (sknt != null){
           const mph = ktToMph(sknt);
           if (allowByCollision(idxWind, lat, lon, minSep)){
-            L.marker([lat,lon], { icon: dotIcon(Math.round(mph), windColorMph(mph)) })
+            L.marker([lat,lon], { icon: dotIcon(String(Math.round(mph)), windColorMph(mph), 28, 12) })
               .bindPopup(popupHTML(r, dAlt)).addTo(windLayer);
           }
         }
       }
 
-      // Gust mph
+      // Gust mph (colored)
       if (visible.gust){
         const gust = num(r.gust);
         if (gust != null){
           const gmh = ktToMph(gust);
           if (allowByCollision(idxGust, lat, lon, minSep)){
-            L.marker([lat,lon], { icon: dotIcon(Math.round(gmh), windColorMph(gmh)) })
+            L.marker([lat,lon], { icon: dotIcon(String(Math.round(gmh)), windColorMph(gmh), 28, 12) })
               .bindPopup(popupHTML(r, dAlt)).addTo(gustLayer);
           }
         }
       }
 
-      // Visibility (simple)
+      // Visibility (fraction-friendly, fog gradient)
       if (visible.vis){
-        const vsby = num(r.vsby);
-        if (vsby != null){
+        const visObj = parseVisMiles(r.vsby);
+        const visMi = visObj.miles;
+        const label = (visObj.label || (r.vsby ?? "").toString().trim());
+        if (label){
+          const style = visStyle(visMi);
           if (allowByCollision(idxVis, lat, lon, minSep)){
-            L.marker([lat,lon], { icon: dotIcon(Math.round(vsby), "rgb(255,255,255)") })
+            L.marker([lat,lon], { icon: dotIcon(label, style.bg, 28, 11) })
               .bindPopup(popupHTML(r, dAlt)).addTo(visLayer);
           }
         }
       }
 
-      // Pressure trend — show 2992 style, color by rising/falling/steady
+      // Pressure (bigger circles, lighter colors, decimal)
       if (visible.pres && alti != null){
-        const p100 = Math.round(alti * 100); // 29.92 -> 2992 fits
         const fill = pressureTrendColor(dAlt);
+        const txt = alti.toFixed(2);         // decimal shown
+        const size = 38;                     // bigger
+        const font = 11;                     // fits "29.92"
+        const border = "#777";               // softer border
         if (allowByCollision(idxPres, lat, lon, minSep)){
-          L.marker([lat,lon], { icon: dotIcon(String(p100), fill) })
+          L.marker([lat,lon], { icon: dotIcon(txt, fill, size, font, border) })
             .bindPopup(popupHTML(r, dAlt)).addTo(presLayer);
         }
       }
 
-      // Weather codes (can be cluttery; still thinned)
+      // Weather codes
       if (visible.wx){
         const wx = (r.wxcodes || "").trim();
         if (wx){
           if (allowByCollision(idxWx, lat, lon, minSep)){
-            L.marker([lat,lon], { icon: dotIcon(wx, "rgb(255,255,255)") })
+            L.marker([lat,lon], { icon: dotIcon(wx, "rgba(255,255,255,0.85)", 28, 10) })
               .bindPopup(popupHTML(r, dAlt)).addTo(wxLayer);
           }
         }
       }
     }
 
-    setStatus(`Drawn with overlap-thinning (minSep ${minSep}px).`);
+    await loadAlerts();
+    setStatus(`Overlap-thinning active (minSep ${minSep}px).`);
   }
 
-  // Refresh on zoom end (so stations phase in/out smoothly)
+  // Refresh on zoom end
   map.on("zoomend", async () => {
     zoomLabelEl.textContent = String(map.getZoom());
-    await refreshMetarsIfNeeded();
+    await refreshIfNeeded();
   });
 
   // Refresh when toggling overlays
-  map.on("overlayadd", async () => { await refreshMetarsIfNeeded(); });
-  map.on("overlayremove", async () => { await refreshMetarsIfNeeded(); });
+  map.on("overlayadd", async () => { await refreshIfNeeded(); });
+  map.on("overlayremove", async () => { await refreshIfNeeded(); });
 
   // -----------------------------
   // Wind particles
@@ -531,12 +656,10 @@
 
     particlesLayer = L.velocityLayer({
       data: velData,
-
       velocityScale: 0.004,
       particleAge: 120,
       particleMultiplier: 1/800,
       lineWidth: 1.7,
-
       colorScale: [
         "rgb(0,40,160)",
         "rgb(0,120,255)",
@@ -546,7 +669,6 @@
       ],
       minVelocity: 0,
       maxVelocity: 60,
-
       displayValues: true,
       displayOptions: {
         velocityType: "Wind",
@@ -567,9 +689,8 @@
     try{
       zoomLabelEl.textContent = String(map.getZoom());
       await loadParticlesOnce();
-      // Load METARs immediately (temp layer is on by default)
-      await refreshMetarsIfNeeded();
-      setStatus("Ready. Toggle layers; zoom in for more stations.");
+      await refreshIfNeeded();
+      setStatus("Ready. Zoom in for more stations. Visibility supports fractions.");
     } catch(e){
       console.error(e);
       setStatus(`Error: ${e.message}`);
