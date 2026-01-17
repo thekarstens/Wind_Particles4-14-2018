@@ -5,7 +5,7 @@
 <title>METAR + Wind Particles (Apr 14, 2018)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Local Leaflet (self-hosted to avoid school/work CDN blocks) -->
+<!-- Local Leaflet (self-hosted) -->
 <link rel="stylesheet" href="./vendor/leaflet/leaflet.css"/>
 <script src="./vendor/leaflet/leaflet.js"></script>
 
@@ -17,13 +17,26 @@
   html, body { height:100%; margin:0; }
   #map { height:100%; background:#fff; }
 
+  .status {
+    position:absolute;
+    top:10px;
+    right:10px;
+    z-index:9999;
+    background:rgba(255,255,255,0.95);
+    border:1px solid #ccc;
+    border-radius:10px;
+    padding:6px 10px;
+    font:600 12px/1.2 Arial, sans-serif;
+  }
+
   .metar-dot{
-    width:26px;height:26px;border-radius:50%;
-    background:#fff;border:2px solid #333;
+    width:28px;height:28px;border-radius:50%;
+    border:2px solid #333;
     display:flex;align-items:center;justify-content:center;
     font:700 12px/1 Arial, sans-serif;color:#111;
     box-shadow: 0 1px 3px rgba(0,0,0,.25);
   }
+
   .metar-pill{
     background:#fff;border:1px solid #333;
     border-radius:10px;padding:3px 6px;
@@ -32,18 +45,23 @@
     box-shadow: 0 1px 3px rgba(0,0,0,.20);
   }
 
-  /* Status box moved to top-right so it won't cover zoom buttons */
-  .status {
-    position:absolute;
-    top:10px;
-    right:10px;
-    left:auto;
-    z-index:9999;
-    background:rgba(255,255,255,0.95);
-    border:1px solid #ccc;
-    border-radius:10px;
-    padding:6px 10px;
-    font:600 12px/1.2 Arial, sans-serif;
+  .legend{
+    background: rgba(255,255,255,0.95);
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font: 600 12px/1.2 Arial, sans-serif;
+    width: 190px;
+  }
+  .legend .row{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:6px;
+  }
+  .legend .bar{
+    height:10px; width:120px; border-radius: 6px; border:1px solid #bbb;
+  }
+  .legend .label{
+    width:55px; text-align:right; font-weight:700;
   }
 </style>
 </head>
@@ -55,78 +73,32 @@
 <script>
   const statusEl = document.getElementById("status");
 
-  // Map
-  const map = L.map('map', { zoomControl:true }).setView([44.3,-99.5], 6);
+  // -----------------------------
+  // Map (OSM basemap)
+  // -----------------------------
+  const map = L.map("map", { zoomControl:true }).setView([44.3, -99.5], 6);
 
-  // OpenStreetMap basemap (roads/towns). Keep attribution visible.
   const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap contributors"
   }).addTo(map);
 
-  // Remove Leaflet prefix/link in corner (optional)
+  // Remove Leaflet prefix/link
   map.attributionControl.setPrefix(false);
 
   // -----------------------------
-  // METAR overlay layers
+  // Utility helpers
   // -----------------------------
-  const tempLayer = L.layerGroup().addTo(map);
-  const dewLayer  = L.layerGroup();
-  const windLayer = L.layerGroup();
-  const visLayer  = L.layerGroup();
-  const presLayer = L.layerGroup();
-  const wxLayer   = L.layerGroup();
-
-  // Wind particles layer (created after JSON loads)
-  let windParticlesLayer = null;
-
-  const overlays = {
-    "Temperature (°F)": tempLayer,
-    "Dew Point (°F)": dewLayer,
-    "Station Wind (mph)": windLayer,
-    "Visibility (mi)": visLayer,
-    "Pressure (inHg)": presLayer,
-    "Weather Codes": wxLayer
-    // "Wind particles" added after it loads
-  };
-
-  const layerControl = L.control.layers(
-    { "OpenStreetMap": osm },
-    overlays,
-    { collapsed:false }
-  ).addTo(map);
-
-  // -----------------------------
-  // METAR download (IEM)
-  // -----------------------------
-  const STS = "2018-04-14T16:00:00Z";
-  const ETS = "2018-04-14T16:00:00Z";
-
-  // Start with core networks. You can add more later.
-  const networks = ["SD_ASOS","MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS"];
-
-  const metarURL =
-    "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
-    + "?data=tmpf&data=dwpf&data=drct&data=sknt&data=gust&data=vsby&data=alti&data=wxcodes"
-    + `&network=${encodeURIComponent(networks.join(","))}`
-    + "&report_type=3"
-    + "&latlon=yes&format=onlycomma&tz=UTC"
-    + `&sts=${encodeURIComponent(STS)}`
-    + `&ets=${encodeURIComponent(ETS)}`
-    + "&missing=empty";
-
   function parseCSV(text){
     const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith("#"));
     if (lines.length < 2) return [];
     const header = lines[0].split(",");
-    const rows = [];
-    for (let i=1; i<lines.length; i++){
-      const cols = lines[i].split(",");
+    return lines.slice(1).map(line => {
+      const cols = line.split(",");
       const obj = {};
-      header.forEach((h, idx) => obj[h] = cols[idx] ?? "");
-      rows.push(obj);
-    }
-    return rows;
+      header.forEach((h, i) => obj[h] = cols[i] ?? "");
+      return obj;
+    });
   }
 
   function num(v){
@@ -136,12 +108,48 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  function dotIcon(txt){
+  function clamp(x, a, b){ return Math.max(a, Math.min(b, x)); }
+
+  // Simple, kid-friendly gradients:
+  // Temp: blue (cold) -> red (warm)
+  // Dew:  tan (dry)  -> green (humid)
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function rgb(r,g,b){ return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`; }
+
+  function tempColorF(t){
+    // -20F -> 80F
+    const t0 = -20, t1 = 80;
+    const x = clamp((t - t0) / (t1 - t0), 0, 1);
+    // blue -> cyan -> yellow -> orange -> red
+    if (x < 0.33){
+      const k = x/0.33;
+      return rgb(lerp(20, 0, k), lerp(60, 200, k), lerp(200, 255, k));
+    } else if (x < 0.66){
+      const k = (x-0.33)/0.33;
+      return rgb(lerp(0, 255, k), lerp(200, 255, k), lerp(255, 0, k));
+    } else {
+      const k = (x-0.66)/0.34;
+      return rgb(lerp(255, 200, k), lerp(255, 0, k), lerp(0, 0, k));
+    }
+  }
+
+  function dewColorF(td){
+    // -20F -> 70F (very dry to muggy)
+    const d0 = -20, d1 = 70;
+    const x = clamp((td - d0) / (d1 - d0), 0, 1);
+    // tan -> yellow-green -> green
+    const r = lerp(210, 0, x);
+    const g = lerp(180, 170, x);
+    const b = lerp(120, 80, x);
+    return rgb(r,g,b);
+  }
+
+  function dotIconColored(txt, fill){
     return L.divIcon({
-      className:"",
-      html:`<div class="metar-dot">${txt}</div>`,
-      iconSize:[26,26],
-      iconAnchor:[13,13]
+      className: "",
+      html: `<div class="metar-dot" style="background:${fill}">${txt}</div>`,
+      iconSize: [28,28],
+      iconAnchor: [14,14]
     });
   }
 
@@ -175,12 +183,111 @@
     `;
   }
 
+  // -----------------------------
+  // Layers
+  // -----------------------------
+  const tempLayer = L.layerGroup().addTo(map);
+  const dewLayer  = L.layerGroup();
+  const windLayer = L.layerGroup();
+  const visLayer  = L.layerGroup();
+  const presLayer = L.layerGroup();
+  const wxLayer   = L.layerGroup();
+
+  let windParticlesLayer = null;
+
+  const overlays = {
+    "Temperature (°F)": tempLayer,
+    "Dew Point (°F)": dewLayer,
+    "Station Wind (mph)": windLayer,
+    "Visibility (mi)": visLayer,
+    "Pressure (inHg)": presLayer,
+    "Weather Codes": wxLayer
+    // "Wind particles" added after load
+  };
+
+  const layerControl = L.control.layers(
+    { "OpenStreetMap": osm },
+    overlays,
+    { collapsed:false }
+  ).addTo(map);
+
+  // -----------------------------
+  // Legends
+  // -----------------------------
+  const tempLegend = L.control({ position:"bottomright" });
+  tempLegend.onAdd = function(){
+    const div = L.DomUtil.create("div", "legend");
+    div.innerHTML = `
+      <div style="font-size:13px;margin-bottom:4px">Temperature (°F)</div>
+      <div class="row">
+        <div class="bar" style="background:linear-gradient(to right,
+          ${tempColorF(-20)}, ${tempColorF(10)}, ${tempColorF(32)}, ${tempColorF(50)}, ${tempColorF(80)}
+        );"></div>
+        <div class="label">cold→warm</div>
+      </div>
+      <div class="row" style="font-weight:700;opacity:.85">
+        <div>-20</div><div>32</div><div>80</div>
+      </div>
+    `;
+    return div;
+  };
+
+  const dewLegend = L.control({ position:"bottomright" });
+  dewLegend.onAdd = function(){
+    const div = L.DomUtil.create("div", "legend");
+    div.innerHTML = `
+      <div style="font-size:13px;margin-bottom:4px">Dew Point (°F)</div>
+      <div class="row">
+        <div class="bar" style="background:linear-gradient(to right,
+          ${dewColorF(-20)}, ${dewColorF(10)}, ${dewColorF(40)}, ${dewColorF(60)}, ${dewColorF(70)}
+        );"></div>
+        <div class="label">dry→humid</div>
+      </div>
+      <div class="row" style="font-weight:700;opacity:.85">
+        <div>-20</div><div>40</div><div>70</div>
+      </div>
+    `;
+    return div;
+  };
+
+  // Show/hide legends based on which layer is active
+  function updateLegends(){
+    const hasTemp = map.hasLayer(tempLayer);
+    const hasDew  = map.hasLayer(dewLayer);
+
+    if (hasTemp && !tempLegend._map) tempLegend.addTo(map);
+    if (!hasTemp && tempLegend._map) tempLegend.remove();
+
+    if (hasDew && !dewLegend._map) dewLegend.addTo(map);
+    if (!hasDew && dewLegend._map) dewLegend.remove();
+  }
+
+  map.on("overlayadd overlayremove", updateLegends);
+
+  // -----------------------------
+  // METAR fetch (IEM)
+  // -----------------------------
+  const STS = "2018-04-14T16:00:00Z";
+  const ETS = "2018-04-14T16:00:00Z";
+
+  // Adjust networks later (you can add more)
+  const networks = ["SD_ASOS","MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS"];
+
+  const metarURL =
+    "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
+    + "?data=tmpf&data=dwpf&data=drct&data=sknt&data=gust&data=vsby&data=alti&data=wxcodes"
+    + `&network=${encodeURIComponent(networks.join(","))}`
+    + "&report_type=3"
+    + "&latlon=yes&format=onlycomma&tz=UTC"
+    + `&sts=${encodeURIComponent(STS)}`
+    + `&ets=${encodeURIComponent(ETS)}`
+    + "&missing=empty";
+
   async function loadMetars(){
     statusEl.textContent = "Loading METARs…";
     const resp = await fetch(metarURL, { cache:"no-store" });
     if (!resp.ok) throw new Error(`METAR HTTP ${resp.status}`);
-    const text = await resp.text();
-    const rows = parseCSV(text);
+    const rows = parseCSV(await resp.text());
 
     [tempLayer, dewLayer, windLayer, visLayer, presLayer, wxLayer].forEach(l => l.clearLayers());
 
@@ -189,6 +296,7 @@
 
     for (const r of rows){
       if (plotted >= MAX_POINTS) break;
+
       const lat = num(r.lat), lon = num(r.lon);
       if (lat == null || lon == null) continue;
 
@@ -200,21 +308,54 @@
       const alti = num(r.alti);
       const wx   = (r.wxcodes || "").trim();
 
-      if (tmpf != null) L.marker([lat,lon],{icon:dotIcon(Math.round(tmpf))}).bindPopup(popupHTML(r)).addTo(tempLayer);
-      if (dwpf != null) L.marker([lat,lon],{icon:dotIcon(Math.round(dwpf))}).bindPopup(popupHTML(r)).addTo(dewLayer);
+      // Temperature colored circle
+      if (tmpf != null){
+        const fill = tempColorF(tmpf);
+        L.marker([lat,lon], { icon: dotIconColored(Math.round(tmpf), fill) })
+          .bindPopup(popupHTML(r))
+          .addTo(tempLayer);
+      }
 
+      // Dew point colored circle
+      if (dwpf != null){
+        const fill = dewColorF(dwpf);
+        L.marker([lat,lon], { icon: dotIconColored(Math.round(dwpf), fill) })
+          .bindPopup(popupHTML(r))
+          .addTo(dewLayer);
+      }
+
+      // Station wind label
       if (sknt != null || drct != null){
         const mph = sknt != null ? Math.round(ktToMph(sknt)) : null;
         const label = `${windArrow(drct)} ${mph ?? "—"}`;
-        L.marker([lat,lon],{icon:pillIcon(label)}).bindPopup(popupHTML(r)).addTo(windLayer);
+        L.marker([lat,lon], { icon: pillIcon(label) })
+          .bindPopup(popupHTML(r))
+          .addTo(windLayer);
       }
 
-      if (vsby != null) L.marker([lat,lon],{icon:pillIcon(`${vsby} mi`)}).bindPopup(popupHTML(r)).addTo(visLayer);
-      if (alti != null) L.marker([lat,lon],{icon:pillIcon(`${alti} in`)}).bindPopup(popupHTML(r)).addTo(presLayer);
-      if (wx)          L.marker([lat,lon],{icon:pillIcon(wx)}).bindPopup(popupHTML(r)).addTo(wxLayer);
+      if (vsby != null){
+        L.marker([lat,lon], { icon: pillIcon(`${vsby} mi`) })
+          .bindPopup(popupHTML(r))
+          .addTo(visLayer);
+      }
+
+      if (alti != null){
+        L.marker([lat,lon], { icon: pillIcon(`${alti} in`) })
+          .bindPopup(popupHTML(r))
+          .addTo(presLayer);
+      }
+
+      if (wx){
+        L.marker([lat,lon], { icon: pillIcon(wx) })
+          .bindPopup(popupHTML(r))
+          .addTo(wxLayer);
+      }
 
       plotted++;
     }
+
+    // Show the right legends based on default visible layers
+    updateLegends();
 
     return plotted;
   }
@@ -222,7 +363,7 @@
   // -----------------------------
   // Wind particles (leaflet-velocity)
   // -----------------------------
-  const windParticlesUrl = "./wind_particles_20180414.json"; // File 2 below
+  const windParticlesUrl = "./wind_particles_20180414.json";
 
   async function loadParticles(){
     statusEl.textContent = "Loading wind particles…";
@@ -232,14 +373,35 @@
 
     windParticlesLayer = L.velocityLayer({
       data: velData,
-      velocityScale: 0.01,
-      particleAge: 90,
-      particleMultiplier: 1/250,
-      lineWidth: 2,
-      displayValues: false
+
+      // Motion tuning (smooth for classrooms)
+      velocityScale: 0.004,
+      particleAge: 120,
+      particleMultiplier: 1/500,
+      lineWidth: 1.5,
+
+      // Blue → Green → Yellow → Orange
+      colorScale: [
+        "rgb(0,70,255)",
+        "rgb(0,200,255)",
+        "rgb(0,255,120)",
+        "rgb(255,255,0)",
+        "rgb(255,120,0)"
+      ],
+      minVelocity: 0,
+      maxVelocity: 45,
+
+      displayValues: true,
+      displayOptions: {
+        velocityType: "Wind",
+        position: "bottomleft",
+        emptyString: "No wind data",
+        angleConvention: "bearingCW",
+        speedUnit: "mph"
+      }
     });
 
-    // Add toggle to control (but don’t auto-enable unless you want)
+    // Add checkbox toggle (don’t auto-enable)
     layerControl.addOverlay(windParticlesLayer, "Wind particles");
   }
 
@@ -250,13 +412,12 @@
     try{
       const plotted = await loadMetars();
       await loadParticles();
-      statusEl.textContent = `Done. METARs: ${plotted}. Toggle "Wind particles" in the layer list.`;
+      statusEl.textContent = `Ready. METARs: ${plotted}. Use checkboxes (and Wind particles).`;
     } catch(e){
       console.error(e);
       statusEl.textContent = `Error: ${e.message}`;
     }
   })();
 </script>
-
 </body>
 </html>
