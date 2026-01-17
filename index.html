@@ -2,14 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>METAR + Wind Particles (Apr 14, 2018)</title>
+<title>Midwest METAR + Wind Particles (Apr 2018)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Local Leaflet -->
 <link rel="stylesheet" href="./vendor/leaflet/leaflet.css"/>
 <script src="./vendor/leaflet/leaflet.js"></script>
 
-<!-- Local leaflet-velocity -->
 <link rel="stylesheet" href="./vendor/leaflet-velocity/leaflet-velocity.min.css">
 <script src="./vendor/leaflet-velocity/leaflet-velocity.min.js"></script>
 
@@ -17,17 +15,22 @@
   html, body { height:100%; margin:0; }
   #map { height:100%; background:#fff; }
 
-  .status {
-    position:absolute;
-    top:10px;
-    right:10px;
-    z-index:9999;
+  .panel{
+    position:absolute; top:10px; left:10px; z-index:9999;
     background:rgba(255,255,255,0.95);
-    border:1px solid #ccc;
-    border-radius:10px;
-    padding:6px 10px;
+    border:1px solid #ccc; border-radius:12px;
+    padding:10px 10px;
     font:600 12px/1.2 Arial, sans-serif;
+    box-shadow: 0 2px 10px rgba(0,0,0,.10);
+    min-width: 230px;
   }
+  .row{ display:flex; gap:8px; align-items:center; margin-top:8px; }
+  .btn{
+    border:1px solid #333; background:#fff; border-radius:10px;
+    padding:6px 10px; cursor:pointer; font:700 12px Arial;
+  }
+  .btn:active{ transform: translateY(1px); }
+  .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-weight:700; }
 
   .metar-dot{
     width:28px;height:28px;border-radius:50%;
@@ -37,58 +40,232 @@
     box-shadow: 0 1px 3px rgba(0,0,0,.25);
   }
 
-  .metar-pill{
-    background:#fff;border:1px solid #333;
-    border-radius:10px;padding:3px 6px;
-    font:700 11px/1 Arial, sans-serif;color:#111;
-    white-space:nowrap;
-    box-shadow: 0 1px 3px rgba(0,0,0,.20);
-  }
-
   .legend{
     background: rgba(255,255,255,0.95);
     border: 1px solid #ccc;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 8px 10px;
     font: 600 12px/1.2 Arial, sans-serif;
-    width: 210px;
-  }
-  .legend .row{
-    display:flex; align-items:center; justify-content:space-between;
-    margin-top:6px;
+    width: 220px;
   }
   .legend .bar{
-    height:10px; width:130px;
-    border-radius: 6px;
-    border:1px solid #bbb;
+    height:10px; width:140px;
+    border-radius: 6px; border:1px solid #bbb;
   }
-  .legend small{ font-weight:700; opacity:.85; }
+  .legend .row{ display:flex; align-items:center; justify-content:space-between; margin-top:6px; gap:8px; }
 </style>
 </head>
 
 <body>
 <div id="map"></div>
-<div id="status" class="status">Loading…</div>
+
+<div class="panel" id="panel">
+  <div style="font-size:13px;margin-bottom:6px">Apr 14, 2018 Case Study</div>
+
+  <div class="row">
+    <button class="btn" id="backBtn">◀ Back</button>
+    <div class="mono" id="timeLabel">2018-04-14 16Z</div>
+    <button class="btn" id="fwdBtn">Forward ▶</button>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <span style="opacity:.75">Zoom declutter:</span>
+    <span class="mono" id="declutterLabel">ON</span>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <span style="opacity:.75" id="status">Loading…</span>
+  </div>
+</div>
 
 <script>
-  const statusEl = document.getElementById("status");
-
   // -----------------------------
-  // Map (OSM basemap)
+  // Map
   // -----------------------------
-  const map = L.map("map", { zoomControl:true }).setView([44.3, -99.5], 6);
+  const map = L.map("map", { zoomControl:true }).setView([44.2, -96.5], 6);
 
   const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap contributors"
   }).addTo(map);
-
-  // Remove Leaflet prefix/link
   map.attributionControl.setPrefix(false);
 
+  const statusEl = document.getElementById("status");
+  const timeLabelEl = document.getElementById("timeLabel");
+  const declutterLabelEl = document.getElementById("declutterLabel");
+
   // -----------------------------
-  // Helpers
+  // Time controls (METAR time steps)
   // -----------------------------
+  // Start at 2018-04-14 16Z
+  let current = new Date(Date.UTC(2018, 3, 14, 16, 0, 0)); // month=3 is April
+  const stepHours = 3; // buttons move 3 hours (METAR + future winds)
+
+  function fmtZ(d){
+    const Y = d.getUTCFullYear();
+    const M = String(d.getUTCMonth()+1).padStart(2,"0");
+    const D = String(d.getUTCDate()).padStart(2,"0");
+    const H = String(d.getUTCHours()).padStart(2,"0");
+    return `${Y}-${M}-${D} ${H}Z`;
+  }
+
+  function toISOZ(d){
+    const Y = d.getUTCFullYear();
+    const M = String(d.getUTCMonth()+1).padStart(2,"0");
+    const D = String(d.getUTCDate()).padStart(2,"0");
+    const H = String(d.getUTCHours()).padStart(2,"0");
+    return `${Y}-${M}-${D}T${H}:00:00Z`;
+  }
+
+  function updateTimeLabel(){
+    timeLabelEl.textContent = fmtZ(current);
+  }
+
+  document.getElementById("backBtn").onclick = async () => {
+    current = new Date(current.getTime() - stepHours*3600*1000);
+    updateTimeLabel();
+    await refreshAll();
+  };
+  document.getElementById("fwdBtn").onclick = async () => {
+    current = new Date(current.getTime() + stepHours*3600*1000);
+    updateTimeLabel();
+    await refreshAll();
+  };
+
+  updateTimeLabel();
+
+  // -----------------------------
+  // Layers
+  // -----------------------------
+  const tempLayer = L.layerGroup().addTo(map);
+  const dewLayer  = L.layerGroup();
+  const windLayer = L.layerGroup();     // sustained mph circles
+  const gustLayer = L.layerGroup();     // gust mph circles
+  const visLayer  = L.layerGroup();
+  const presLayer = L.layerGroup();
+  const wxLayer   = L.layerGroup();
+
+  let particlesLayer = null;
+
+  const overlays = {
+    "Temperature (°F)": tempLayer,
+    "Dew Point (°F)": dewLayer,
+    "Wind (mph)": windLayer,
+    "Wind Gusts (mph)": gustLayer,
+    "Visibility (mi)": visLayer,
+    "Pressure (inHg)": presLayer,
+    "Weather Codes": wxLayer
+    // "Wind particles" added after load
+    // "Watches/Warnings/Advisories" placeholder later
+  };
+
+  const layerControl = L.control.layers({ "OpenStreetMap": osm }, overlays, { collapsed:false }).addTo(map);
+
+  // -----------------------------
+  // Color ramps you requested
+  // -----------------------------
+  function tempColorF(t){
+    const stops = [
+      {v: 10, c: [170, 220, 255]},
+      {v: 20, c: [120, 190, 255]},
+      {v: 30, c: [0, 70, 200]},
+      {v: 40, c: [0, 170, 0]},
+      {v: 50, c: [150, 255, 150]},
+      {v: 60, c: [255, 235, 0]},
+      {v: 70, c: [255, 140, 0]},
+      {v: 85, c: [255, 80, 0]}
+    ];
+    return piecewiseColor(t, stops);
+  }
+
+  function dewColorF(td){
+    const stops = [
+      {v: 10, c: [90, 55, 20]},
+      {v: 20, c: [140, 95, 40]},
+      {v: 30, c: [200, 160, 110]},
+      {v: 50, c: [190, 200, 140]},
+      {v: 60, c: [0, 170, 0]},
+      {v: 70, c: [0, 90, 0]}
+    ];
+    return piecewiseColor(td, stops);
+  }
+
+  // Wind color ramp to match particle look (dark blue -> cyan -> green -> yellow -> orange)
+  function windColorMph(spd){
+    const stops = [
+      {v: 0,  c: [0, 40, 160]},
+      {v: 10, c: [0, 120, 255]},
+      {v: 20, c: [0, 210, 180]},
+      {v: 35, c: [255, 220, 0]},
+      {v: 50, c: [255, 120, 0]},
+      {v: 70, c: [255, 80, 0]}
+    ];
+    return piecewiseColor(spd, stops);
+  }
+
+  function piecewiseColor(x, stops){
+    if (x == null || !Number.isFinite(x)) return "rgb(255,255,255)";
+    if (x <= stops[0].v) return `rgb(${stops[0].c.join(",")})`;
+    if (x >= stops[stops.length-1].v) return `rgb(${stops[stops.length-1].c.join(",")})`;
+    for (let i=0; i<stops.length-1; i++){
+      const a = stops[i], b = stops[i+1];
+      if (x >= a.v && x <= b.v){
+        const k = (x - a.v) / (b.v - a.v);
+        const r = Math.round(a.c[0] + (b.c[0]-a.c[0])*k);
+        const g = Math.round(a.c[1] + (b.c[1]-a.c[1])*k);
+        const bb= Math.round(a.c[2] + (b.c[2]-a.c[2])*k);
+        return `rgb(${r},${g},${bb})`;
+      }
+    }
+    return "rgb(255,255,255)";
+  }
+
+  function dotIcon(txt, fill){
+    return L.divIcon({
+      className:"",
+      html:`<div class="metar-dot" style="background:${fill}">${txt}</div>`,
+      iconSize:[28,28],
+      iconAnchor:[14,14]
+    });
+  }
+
+  // -----------------------------
+  // Declutter strategy (no extra libs)
+  // -----------------------------
+  // When zoomed out, show fewer stations (keeps “all sensors” but reduces overload).
+  // Rule: at zoom <= 5, we only plot stations where (lat,lon) falls on a coarse grid.
+  function declutterKeep(lat, lon, zoom){
+    if (zoom >= 6) return true;
+    const cell = 0.6; // degrees; bigger = fewer points when zoomed out
+    const keyLat = Math.round(lat / cell);
+    const keyLon = Math.round(lon / cell);
+    // keep 1 out of 4 cells (stable “phase in/out”)
+    return ((keyLat + keyLon) % 4) === 0;
+  }
+
+  map.on("zoomend", async () => {
+    declutterLabelEl.textContent = (map.getZoom() <= 5) ? "ON" : "OFF";
+    await refreshMetars(); // re-render at new zoom
+  });
+
+  // -----------------------------
+  // METAR fetch
+  // -----------------------------
+  const networks = ["SD_ASOS","MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","IL_ASOS","MI_ASOS"]; // bigger Midwest
+  const reportType = 3;
+
+  function metarURLForTime(d){
+    const iso = toISOZ(d);
+    return "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
+      + "?data=tmpf&data=dwpf&data=drct&data=sknt&data=gust&data=vsby&data=alti&data=wxcodes"
+      + `&network=${encodeURIComponent(networks.join(","))}`
+      + `&report_type=${reportType}`
+      + "&latlon=yes&format=onlycomma&tz=UTC"
+      + `&sts=${encodeURIComponent(iso)}`
+      + `&ets=${encodeURIComponent(iso)}`
+      + "&missing=empty";
+  }
+
   function parseCSV(text){
     const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith("#"));
     if (lines.length < 2) return [];
@@ -96,7 +273,7 @@
     return lines.slice(1).map(line => {
       const cols = line.split(",");
       const obj = {};
-      header.forEach((h, i) => obj[h] = cols[i] ?? "");
+      header.forEach((h,i)=>obj[h]=cols[i] ?? "");
       return obj;
     });
   }
@@ -108,93 +285,21 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  function dotIconColored(txt, fill){
-    return L.divIcon({
-      className: "",
-      html: `<div class="metar-dot" style="background:${fill}">${txt}</div>`,
-      iconSize: [28,28],
-      iconAnchor: [14,14]
-    });
-  }
-
-  function pillIcon(txt){
-    return L.divIcon({ className:"", html:`<div class="metar-pill">${txt}</div>` });
-  }
-
-  function windArrow(deg){
-    if (deg == null) return "•";
-    const dirs = ["↑","↗","→","↘","↓","↙","←","↖"];
-    return dirs[Math.round((deg % 360)/45) % 8];
-  }
-
   function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
-
-  // -----------------------------
-  // Your requested color ramps
-  // -----------------------------
-  function tempColorF(t){
-    const stops = [
-      {v: 10, c: [170, 220, 255]}, // light blue
-      {v: 20, c: [120, 190, 255]}, // light blue deeper
-      {v: 30, c: [0, 70, 200]},    // dark blue
-      {v: 40, c: [0, 170, 0]},     // green
-      {v: 50, c: [150, 255, 150]}, // light green
-      {v: 60, c: [255, 235, 0]},   // yellow
-      {v: 70, c: [255, 140, 0]},   // orange
-      {v: 85, c: [255, 80, 0]}     // hotter extension
-    ];
-    if (t <= stops[0].v) return `rgb(${stops[0].c.join(",")})`;
-    if (t >= stops[stops.length-1].v) return `rgb(${stops[stops.length-1].c.join(",")})`;
-
-    for (let i=0; i<stops.length-1; i++){
-      const a = stops[i], b = stops[i+1];
-      if (t >= a.v && t <= b.v){
-        const k = (t - a.v) / (b.v - a.v);
-        const r = Math.round(a.c[0] + (b.c[0]-a.c[0]) * k);
-        const g = Math.round(a.c[1] + (b.c[1]-a.c[1]) * k);
-        const bb= Math.round(a.c[2] + (b.c[2]-a.c[2]) * k);
-        return `rgb(${r},${g},${bb})`;
-      }
-    }
-    return "rgb(255,255,255)";
-  }
-
-  function dewColorF(td){
-    const stops = [
-      {v: 10, c: [90, 55, 20]},     // dark brown
-      {v: 20, c: [140, 95, 40]},    // brown
-      {v: 30, c: [200, 160, 110]},  // light brown
-      {v: 50, c: [190, 200, 140]},  // transition
-      {v: 60, c: [0, 170, 0]},      // green
-      {v: 70, c: [0, 90, 0]}        // dark green
-    ];
-    if (td <= stops[0].v) return `rgb(${stops[0].c.join(",")})`;
-    if (td >= stops[stops.length-1].v) return `rgb(${stops[stops.length-1].c.join(",")})`;
-
-    for (let i=0; i<stops.length-1; i++){
-      const a = stops[i], b = stops[i+1];
-      if (td >= a.v && td <= b.v){
-        const k = (td - a.v) / (b.v - a.v);
-        const r = Math.round(a.c[0] + (b.c[0]-a.c[0]) * k);
-        const g = Math.round(a.c[1] + (b.c[1]-a.c[1]) * k);
-        const bb= Math.round(a.c[2] + (b.c[2]-a.c[2]) * k);
-        return `rgb(${r},${g},${bb})`;
-      }
-    }
-    return "rgb(255,255,255)";
-  }
 
   function popupHTML(r){
     const drct = num(r.drct);
     const sknt = num(r.sknt);
+    const gust = num(r.gust);
     const mph  = sknt != null ? Math.round(ktToMph(sknt)) : "—";
+    const gmh  = gust != null ? Math.round(ktToMph(gust)) : "—";
     return `
       <div style="font:600 13px/1.3 Arial,sans-serif">
         <div style="font-size:14px;margin-bottom:4px"><b>${r.station || "Station"}</b></div>
         <div style="opacity:.85;margin-bottom:6px">Valid: ${r.valid || ""} UTC</div>
         <div>Temp: <b>${r.tmpf || "—"}</b> °F</div>
         <div>Dew Pt: <b>${r.dwpf || "—"}</b> °F</div>
-        <div>Wind: <b>${drct ?? "—"}</b>° @ <b>${mph}</b> mph</div>
+        <div>Wind: <b>${mph}</b> mph (gust <b>${gmh}</b>)</div>
         <div>Vis: <b>${r.vsby || "—"}</b> mi</div>
         <div>Alt: <b>${r.alti || "—"}</b> inHg</div>
         <div>Wx: <b>${(r.wxcodes || "").trim() || "—"}</b></div>
@@ -202,193 +307,99 @@
     `;
   }
 
-  // -----------------------------
-  // Layers
-  // -----------------------------
-  const tempLayer = L.layerGroup().addTo(map);
-  const dewLayer  = L.layerGroup();
-  const windLayer = L.layerGroup();
-  const visLayer  = L.layerGroup();
-  const presLayer = L.layerGroup();
-  const wxLayer   = L.layerGroup();
-
-  let windParticlesLayer = null;
-
-  const overlays = {
-    "Temperature (°F)": tempLayer,
-    "Dew Point (°F)": dewLayer,
-    "Station Wind (mph)": windLayer,
-    "Visibility (mi)": visLayer,
-    "Pressure (inHg)": presLayer,
-    "Weather Codes": wxLayer
-    // Wind particles added after load
-  };
-
-  const layerControl = L.control.layers(
-    { "OpenStreetMap": osm },
-    overlays,
-    { collapsed:false }
-  ).addTo(map);
-
-  // -----------------------------
-  // Legends (only show when layer is enabled)
-  // -----------------------------
-  const tempLegend = L.control({ position:"bottomright" });
-  tempLegend.onAdd = function(){
-    const div = L.DomUtil.create("div", "legend");
-    div.innerHTML = `
-      <div style="font-size:13px;margin-bottom:4px">Temperature Colors (°F)</div>
-      <div class="row">
-        <div class="bar" style="background:linear-gradient(to right,
-          ${tempColorF(10)}, ${tempColorF(20)}, ${tempColorF(30)}, ${tempColorF(40)}, ${tempColorF(50)}, ${tempColorF(60)}, ${tempColorF(70)}
-        );"></div>
-        <div><small>10→70</small></div>
-      </div>
-      <div class="row" style="justify-content:space-between;font-weight:700;opacity:.85;margin-top:6px">
-        <div>10</div><div>30</div><div>50</div><div>70</div>
-      </div>
-    `;
-    return div;
-  };
-
-  const dewLegend = L.control({ position:"bottomright" });
-  dewLegend.onAdd = function(){
-    const div = L.DomUtil.create("div", "legend");
-    div.innerHTML = `
-      <div style="font-size:13px;margin-bottom:4px">Dew Point Colors (°F)</div>
-      <div class="row">
-        <div class="bar" style="background:linear-gradient(to right,
-          ${dewColorF(10)}, ${dewColorF(20)}, ${dewColorF(30)}, ${dewColorF(60)}, ${dewColorF(70)}
-        );"></div>
-        <div><small>10→70</small></div>
-      </div>
-      <div class="row" style="justify-content:space-between;font-weight:700;opacity:.85;margin-top:6px">
-        <div>10</div><div>30</div><div>60</div><div>70</div>
-      </div>
-    `;
-    return div;
-  };
-
-  function updateLegends(){
-    const hasTemp = map.hasLayer(tempLayer);
-    const hasDew  = map.hasLayer(dewLayer);
-
-    if (hasTemp && !tempLegend._map) tempLegend.addTo(map);
-    if (!hasTemp && tempLegend._map) tempLegend.remove();
-
-    if (hasDew && !dewLegend._map) dewLegend.addTo(map);
-    if (!hasDew && dewLegend._map) dewLegend.remove();
-  }
-  map.on("overlayadd overlayremove", updateLegends);
-
-  // -----------------------------
-  // METAR fetch (IEM)
-  // -----------------------------
-  const STS = "2018-04-14T16:00:00Z";
-  const ETS = "2018-04-14T16:00:00Z";
-  const networks = ["SD_ASOS","MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS"];
-
-  const metarURL =
-    "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
-    + "?data=tmpf&data=dwpf&data=drct&data=sknt&data=gust&data=vsby&data=alti&data=wxcodes"
-    + `&network=${encodeURIComponent(networks.join(","))}`
-    + "&report_type=3"
-    + "&latlon=yes&format=onlycomma&tz=UTC"
-    + `&sts=${encodeURIComponent(STS)}`
-    + `&ets=${encodeURIComponent(ETS)}`
-    + "&missing=empty";
-
-  async function loadMetars(){
+  async function refreshMetars(){
     statusEl.textContent = "Loading METARs…";
-    const resp = await fetch(metarURL, { cache:"no-store" });
+
+    const url = metarURLForTime(current);
+    const resp = await fetch(url, { cache:"no-store" });
     if (!resp.ok) throw new Error(`METAR HTTP ${resp.status}`);
     const rows = parseCSV(await resp.text());
 
-    [tempLayer, dewLayer, windLayer, visLayer, presLayer, wxLayer].forEach(l => l.clearLayers());
+    [tempLayer, dewLayer, windLayer, gustLayer, visLayer, presLayer, wxLayer].forEach(l => l.clearLayers());
 
+    const zoom = map.getZoom();
     let plotted = 0;
-    const MAX_POINTS = 1200;
+    let kept = 0;
+    const MAX_POINTS = 2000;
 
     for (const r of rows){
       if (plotted >= MAX_POINTS) break;
-
       const lat = num(r.lat), lon = num(r.lon);
       if (lat == null || lon == null) continue;
 
+      plotted++;
+
+      if (!declutterKeep(lat, lon, zoom)) continue;
+      kept++;
+
       const tmpf = num(r.tmpf);
       const dwpf = num(r.dwpf);
-      const drct = num(r.drct);
       const sknt = num(r.sknt);
+      const gust = num(r.gust);
       const vsby = num(r.vsby);
       const alti = num(r.alti);
       const wx   = (r.wxcodes || "").trim();
 
       if (tmpf != null){
-        L.marker([lat,lon], { icon: dotIconColored(Math.round(tmpf), tempColorF(tmpf)) })
-          .bindPopup(popupHTML(r))
-          .addTo(tempLayer);
+        L.marker([lat,lon], { icon: dotIcon(Math.round(tmpf), tempColorF(tmpf)) })
+          .bindPopup(popupHTML(r)).addTo(tempLayer);
       }
 
       if (dwpf != null){
-        L.marker([lat,lon], { icon: dotIconColored(Math.round(dwpf), dewColorF(dwpf)) })
-          .bindPopup(popupHTML(r))
-          .addTo(dewLayer);
+        L.marker([lat,lon], { icon: dotIcon(Math.round(dwpf), dewColorF(dwpf)) })
+          .bindPopup(popupHTML(r)).addTo(dewLayer);
       }
 
-      if (sknt != null || drct != null){
-        const mph = sknt != null ? Math.round(ktToMph(sknt)) : null;
-        const label = `${windArrow(drct)} ${mph ?? "—"}`;
-        L.marker([lat,lon], { icon: pillIcon(label) })
-          .bindPopup(popupHTML(r))
-          .addTo(windLayer);
+      // Wind mph circle colored to match particles
+      const mph = sknt != null ? ktToMph(sknt) : null;
+      if (mph != null){
+        L.marker([lat,lon], { icon: dotIcon(Math.round(mph), windColorMph(mph)) })
+          .bindPopup(popupHTML(r)).addTo(windLayer);
+      }
+
+      // Gust circle (optional layer)
+      const gmh = gust != null ? ktToMph(gust) : null;
+      if (gmh != null){
+        L.marker([lat,lon], { icon: dotIcon(Math.round(gmh), windColorMph(gmh)) })
+          .bindPopup(popupHTML(r)).addTo(gustLayer);
       }
 
       if (vsby != null){
-        L.marker([lat,lon], { icon: pillIcon(`${vsby} mi`) })
-          .bindPopup(popupHTML(r))
-          .addTo(visLayer);
+        L.marker([lat,lon], { icon: dotIcon(Math.round(vsby), "rgb(255,255,255)") })
+          .bindPopup(popupHTML(r)).addTo(visLayer);
       }
 
       if (alti != null){
-        L.marker([lat,lon], { icon: pillIcon(`${alti} in`) })
-          .bindPopup(popupHTML(r))
-          .addTo(presLayer);
+        L.marker([lat,lon], { icon: dotIcon((+alti).toFixed(2), "rgb(255,255,255)") })
+          .bindPopup(popupHTML(r)).addTo(presLayer);
       }
 
       if (wx){
-        L.marker([lat,lon], { icon: pillIcon(wx) })
-          .bindPopup(popupHTML(r))
-          .addTo(wxLayer);
+        L.marker([lat,lon], { icon: dotIcon(wx, "rgb(255,255,255)") })
+          .bindPopup(popupHTML(r)).addTo(wxLayer);
       }
-
-      plotted++;
     }
 
-    updateLegends();
-    return plotted;
+    statusEl.textContent = `METARs: ${kept}/${plotted} shown (zoom ${zoom}).`;
   }
 
   // -----------------------------
-  // Wind particles
+  // Wind particles (still daily mean until we swap to 3-hour)
   // -----------------------------
   const windParticlesUrl = "./wind_particles_20180414.json";
 
-  async function loadParticles(){
+  async function loadParticlesOnce(){
     statusEl.textContent = "Loading wind particles…";
     const r = await fetch(windParticlesUrl, { cache:"no-store" });
     if (!r.ok) throw new Error(`Particles JSON HTTP ${r.status}`);
     const velData = await r.json();
 
-    windParticlesLayer = L.velocityLayer({
+    particlesLayer = L.velocityLayer({
       data: velData,
-
-      // Smooth motion for classrooms
       velocityScale: 0.004,
       particleAge: 120,
-      particleMultiplier: 1/500,
+      particleMultiplier: 1/700,
       lineWidth: 1.6,
-
-      // Darker, higher-contrast ramp (more blues/greens)
       colorScale: [
         "rgb(0,40,160)",
         "rgb(0,120,255)",
@@ -398,7 +409,6 @@
       ],
       minVelocity: 0,
       maxVelocity: 60,
-
       displayValues: true,
       displayOptions: {
         velocityType: "Wind",
@@ -409,17 +419,22 @@
       }
     });
 
-    layerControl.addOverlay(windParticlesLayer, "Wind particles");
+    layerControl.addOverlay(particlesLayer, "Wind particles");
+  }
+
+  async function refreshAll(){
+    await refreshMetars();
+    // Later: swap particles based on time (3-hour files)
   }
 
   // -----------------------------
-  // Run
+  // Start
   // -----------------------------
   (async () => {
     try{
-      const plotted = await loadMetars();
-      await loadParticles();
-      statusEl.textContent = `Ready. METARs: ${plotted}. Use checkboxes (and Wind particles).`;
+      await loadParticlesOnce();
+      await refreshAll();
+      declutterLabelEl.textContent = (map.getZoom() <= 5) ? "ON" : "OFF";
     } catch(e){
       console.error(e);
       statusEl.textContent = `Error: ${e.message}`;
