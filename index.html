@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Midwest METAR + Wind + Alerts (Apr 2018)</title>
+<title>Midwest METAR + Wind Particles (Apr 2018)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <link rel="stylesheet" href="./vendor/leaflet/leaflet.css"/>
@@ -10,11 +10,6 @@
 
 <link rel="stylesheet" href="./vendor/leaflet-velocity/leaflet-velocity.min.css">
 <script src="./vendor/leaflet-velocity/leaflet-velocity.min.js"></script>
-
-<!-- MarkerCluster (CDN) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <style>
   html, body { height:100%; margin:0; }
@@ -24,10 +19,10 @@
     position:absolute; top:10px; left:10px; z-index:9999;
     background:rgba(255,255,255,0.95);
     border:1px solid #ccc; border-radius:12px;
-    padding:10px;
+    padding:10px 10px;
     font:600 12px/1.2 Arial, sans-serif;
     box-shadow: 0 2px 10px rgba(0,0,0,.10);
-    min-width: 250px;
+    min-width: 260px;
   }
   .row{ display:flex; gap:8px; align-items:center; margin-top:8px; }
   .btn{
@@ -43,6 +38,7 @@
     display:flex;align-items:center;justify-content:center;
     font:800 12px/1 Arial, sans-serif;color:#111;
     box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    user-select:none;
   }
 </style>
 </head>
@@ -62,6 +58,8 @@
   <div class="row">
     <span style="opacity:.75">METAR step:</span>
     <span class="mono">3 hours</span>
+    <span style="opacity:.75;margin-left:auto">Zoom:</span>
+    <span class="mono" id="zoomLabel">6</span>
   </div>
 
   <div class="row">
@@ -81,8 +79,11 @@
   }).addTo(map);
   map.attributionControl.setPrefix(false);
 
-  const statusEl = document.getElementById("status");
-  const timeLabelEl = document.getElementById("timeLabel");
+  const statusEl   = document.getElementById("status");
+  const timeLabelEl= document.getElementById("timeLabel");
+  const zoomLabelEl= document.getElementById("zoomLabel");
+
+  function setStatus(msg){ statusEl.textContent = msg; }
 
   // -----------------------------
   // Time controls
@@ -110,55 +111,93 @@
   document.getElementById("backBtn").onclick = async () => {
     current = new Date(current.getTime() - stepHours*3600*1000);
     updateTimeLabel();
-    await refreshMetars();
+    await refreshMetarsIfNeeded();
   };
   document.getElementById("fwdBtn").onclick = async () => {
     current = new Date(current.getTime() + stepHours*3600*1000);
     updateTimeLabel();
-    await refreshMetars();
+    await refreshMetarsIfNeeded();
   };
 
   // -----------------------------
-  // Cluster groups (one per layer)
+  // Layers (NO CLUSTERING)
   // -----------------------------
-  function makeCluster(){
-    return L.markerClusterGroup({
-      showCoverageOnHover: false,
-      spiderfyOnMaxZoom: true,
-      disableClusteringAtZoom: 8,  // key: zoom in -> all points appear
-      maxClusterRadius: 55
-    });
-  }
+  const tempLayer = L.layerGroup().addTo(map);
+  const dewLayer  = L.layerGroup();
+  const windLayer = L.layerGroup();     // sustained mph circles
+  const gustLayer = L.layerGroup();     // gust mph circles
+  const visLayer  = L.layerGroup();
+  const presLayer = L.layerGroup();     // trend-colored altimeter
+  const wxLayer   = L.layerGroup();
 
-  const tempCluster = makeCluster().addTo(map);
-  const dewCluster  = makeCluster();
-  const windCluster = makeCluster();
-  const gustCluster = makeCluster();
-  const visCluster  = makeCluster();
-  const presCluster = makeCluster();
-  const wxCluster   = makeCluster();
-
-  // Particles & Alerts placeholders
   let particlesLayer = null;
-  const alertsLayer = L.geoJSON(null, {
-    style: { weight: 2, color: "#cc0000", fillOpacity: 0.05 }
-  });
+
+  const overlays = {
+    "Temperature (°F)": tempLayer,
+    "Dew Point (°F)": dewLayer,
+    "Wind (mph)": windLayer,
+    "Wind Gusts (mph)": gustLayer,
+    "Visibility (mi)": visLayer,
+    "Pressure (trend)": presLayer,
+    "Weather Codes": wxLayer
+  };
 
   const layerControl = L.control.layers(
     { "OpenStreetMap": osm },
-    {
-      "Temperature (°F)": tempCluster,
-      "Dew Point (°F)": dewCluster,
-      "Wind (mph)": windCluster,
-      "Wind Gusts (mph)": gustCluster,
-      "Visibility (mi)": visCluster,
-      "Pressure (trend)": presCluster,
-      "Weather Codes": wxCluster,
-      "Alerts (WWA)": alertsLayer
-      // "Wind particles" added after load
-    },
+    overlays,
     { collapsed:false }
   ).addTo(map);
+
+  // -----------------------------
+  // Collision thinning (fast via spatial hashing)
+  // -----------------------------
+  class CollisionIndex {
+    constructor(cellSizePx){
+      this.cell = cellSizePx;
+      this.grid = new Map();  // key -> array of {x,y}
+    }
+    _key(cx, cy){ return `${cx},${cy}`; }
+    _cellOf(p){ return [Math.floor(p.x / this.cell), Math.floor(p.y / this.cell)]; }
+    canPlace(p, minSepPx){
+      const [cx, cy] = this._cellOf(p);
+      const r2 = minSepPx * minSepPx;
+
+      // Check this cell and neighbors (3x3)
+      for (let dx=-1; dx<=1; dx++){
+        for (let dy=-1; dy<=1; dy++){
+          const key = this._key(cx+dx, cy+dy);
+          const arr = this.grid.get(key);
+          if (!arr) continue;
+          for (const q of arr){
+            const ddx = p.x - q.x;
+            const ddy = p.y - q.y;
+            if ((ddx*ddx + ddy*ddy) < r2) return false;
+          }
+        }
+      }
+      // If clear, insert
+      const key = this._key(cx, cy);
+      if (!this.grid.has(key)) this.grid.set(key, []);
+      this.grid.get(key).push({x:p.x, y:p.y});
+      return true;
+    }
+  }
+
+  // minimum separation by zoom (px)
+  function minSepForZoom(z){
+    // Bigger sep when zoomed out, relax as zoom in
+    if (z <= 4) return 54;
+    if (z === 5) return 46;
+    if (z === 6) return 38;
+    if (z === 7) return 32;
+    return 0; // z >= 8 show everything
+  }
+
+  function allowByCollision(index, lat, lon, minSepPx){
+    if (minSepPx <= 0) return true;
+    const p = map.latLngToLayerPoint([lat, lon]);
+    return index.canPlace(p, minSepPx);
+  }
 
   // -----------------------------
   // Color ramps
@@ -171,9 +210,9 @@
       const a = stops[i], b = stops[i+1];
       if (x >= a.v && x <= b.v){
         const k = (x - a.v) / (b.v - a.v);
-        const r = Math.round(a.c[0] + (b.c[0]-a.c[0])*k);
-        const g = Math.round(a.c[1] + (b.c[1]-a.c[1])*k);
-        const bb= Math.round(a.c[2] + (b.c[2]-a.c[2])*k);
+        const r = Math.round(a.c[0] + (b.c[0]-a.c[0]) * k);
+        const g = Math.round(a.c[1] + (b.c[1]-a.c[1]) * k);
+        const bb= Math.round(a.c[2] + (b.c[2]-a.c[2]) * k);
         return `rgb(${r},${g},${bb})`;
       }
     }
@@ -182,25 +221,25 @@
 
   function tempColorF(t){
     return piecewiseColor(t, [
-      {v: 10, c: [170, 220, 255]},
-      {v: 20, c: [120, 190, 255]},
-      {v: 30, c: [0, 70, 200]},
-      {v: 40, c: [0, 170, 0]},
-      {v: 50, c: [150, 255, 150]},
-      {v: 60, c: [255, 235, 0]},
-      {v: 70, c: [255, 140, 0]},
-      {v: 85, c: [255, 80, 0]}
+      {v: 10, c: [170, 220, 255]}, // light blue
+      {v: 20, c: [120, 190, 255]}, // deeper light blue
+      {v: 30, c: [0, 70, 200]},    // dark blue
+      {v: 40, c: [0, 170, 0]},     // green
+      {v: 50, c: [150, 255, 150]}, // light green
+      {v: 60, c: [255, 235, 0]},   // yellow
+      {v: 70, c: [255, 140, 0]},   // orange
+      {v: 85, c: [255, 80, 0]}     // extension
     ]);
   }
 
   function dewColorF(td){
     return piecewiseColor(td, [
-      {v: 10, c: [90, 55, 20]},
-      {v: 20, c: [140, 95, 40]},
-      {v: 30, c: [200, 160, 110]},
-      {v: 50, c: [190, 200, 140]},
-      {v: 60, c: [0, 170, 0]},
-      {v: 70, c: [0, 90, 0]}
+      {v: 10, c: [90, 55, 20]},    // dark brown
+      {v: 20, c: [140, 95, 40]},   // brown
+      {v: 30, c: [200, 160, 110]}, // light brown
+      {v: 50, c: [190, 200, 140]}, // transition
+      {v: 60, c: [0, 170, 0]},     // green
+      {v: 70, c: [0, 90, 0]}       // dark green
     ]);
   }
 
@@ -216,11 +255,10 @@
   }
 
   function pressureTrendColor(deltaInHg){
-    // delta = current - prev
     if (deltaInHg == null || !Number.isFinite(deltaInHg)) return "rgb(235,235,235)";
-    if (deltaInHg > 0.02) return "rgb(0,170,0)";     // rising
-    if (deltaInHg < -0.02) return "rgb(200,0,0)";    // falling
-    return "rgb(200,200,200)";                       // steady
+    if (deltaInHg > 0.02) return "rgb(0,170,0)";    // rising
+    if (deltaInHg < -0.02) return "rgb(200,0,0)";   // falling
+    return "rgb(200,200,200)";                      // steady
   }
 
   function dotIcon(txt, fill){
@@ -233,15 +271,16 @@
   }
 
   // -----------------------------
-  // METAR + trend fetch (T and T-3h)
+  // METAR fetch (SD first, then rest) + pressure trend (T vs T-3h)
   // -----------------------------
-  const networks = ["SD_ASOS","MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","IL_ASOS","MI_ASOS"];
   const reportType = 3;
+  const SD_ONLY = ["SD_ASOS"];
+  const REST = ["MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","IL_ASOS","MI_ASOS"];
 
-  function metarURL(d){
+  function asosURL(d, networks){
     const iso = toISOZ(d);
     return "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
-      + "?data=tmpf&data=dwpf&data=drct&data=sknt&data=gust&data=vsby&data=alti&data=wxcodes"
+      + "?data=tmpf&data=dwpf&data=sknt&data=gust&data=vsby&data=alti&data=wxcodes"
       + `&network=${encodeURIComponent(networks.join(","))}`
       + `&report_type=${reportType}`
       + "&latlon=yes&format=onlycomma&tz=UTC"
@@ -261,20 +300,28 @@
       return obj;
     });
   }
+
   function num(v){
     const s = (v ?? "").toString().trim();
     if (!s) return null;
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
   }
+
   function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
 
-  function popupHTML(r, presDelta){
+  async function fetchRows(d, networks){
+    const resp = await fetch(asosURL(d, networks), { cache:"no-store" });
+    if (!resp.ok) throw new Error(`METAR HTTP ${resp.status}`);
+    return parseCSV(await resp.text());
+  }
+
+  function popupHTML(r, dAlt){
     const sknt = num(r.sknt);
     const gust = num(r.gust);
     const mph  = sknt != null ? Math.round(ktToMph(sknt)) : "—";
     const gmh  = gust != null ? Math.round(ktToMph(gust)) : "—";
-    const dTxt = (presDelta == null) ? "—" : `${presDelta > 0 ? "+" : ""}${presDelta.toFixed(2)} in/3h`;
+    const dTxt = (dAlt == null) ? "—" : `${dAlt > 0 ? "+" : ""}${dAlt.toFixed(2)} in/3h`;
     return `
       <div style="font:600 13px/1.3 Arial,sans-serif">
         <div style="font-size:14px;margin-bottom:4px"><b>${r.station || "Station"}</b></div>
@@ -290,112 +337,206 @@
     `;
   }
 
-  async function fetchRows(d){
-    const resp = await fetch(metarURL(d), { cache:"no-store" });
-    if (!resp.ok) throw new Error(`METAR HTTP ${resp.status}`);
-    return parseCSV(await resp.text());
+  function anyOverlayVisible(){
+    return (
+      map.hasLayer(tempLayer) ||
+      map.hasLayer(dewLayer)  ||
+      map.hasLayer(windLayer) ||
+      map.hasLayer(gustLayer) ||
+      map.hasLayer(visLayer)  ||
+      map.hasLayer(presLayer) ||
+      map.hasLayer(wxLayer)
+    );
+  }
+
+  async function refreshMetarsIfNeeded(){
+    if (!anyOverlayVisible()) return;
+    await refreshMetars();
   }
 
   async function refreshMetars(){
-    statusEl.textContent = "Loading METARs…";
+    setStatus("Loading METARs…");
 
     const prev = new Date(current.getTime() - stepHours*3600*1000);
-    const [rowsNow, rowsPrev] = await Promise.all([fetchRows(current), fetchRows(prev)]);
 
-    // Map previous altimeter by station
+    // Fetch SD first then rest (both now and prev)
+    const [sdNow, restNow, sdPrev, restPrev] = await Promise.all([
+      fetchRows(current, SD_ONLY),
+      fetchRows(current, REST),
+      fetchRows(prev, SD_ONLY),
+      fetchRows(prev, REST)
+    ]);
+
+    const rowsNow  = sdNow.concat(restNow);
+    const rowsPrev = sdPrev.concat(restPrev);
+
+    // previous altimeter by station
     const prevAlt = new Map();
     for (const r of rowsPrev){
       const st = (r.station || "").trim();
-      const a = num(r.alti);
+      const a  = num(r.alti);
       if (st && a != null) prevAlt.set(st, a);
     }
 
-    // Clear clusters
-    [tempCluster, dewCluster, windCluster, gustCluster, visCluster, presCluster, wxCluster].forEach(c => c.clearLayers());
+    // Clear only layers that are visible (saves time)
+    const visible = {
+      temp: map.hasLayer(tempLayer),
+      dew:  map.hasLayer(dewLayer),
+      wind: map.hasLayer(windLayer),
+      gust: map.hasLayer(gustLayer),
+      vis:  map.hasLayer(visLayer),
+      pres: map.hasLayer(presLayer),
+      wx:   map.hasLayer(wxLayer)
+    };
+    if (visible.temp) tempLayer.clearLayers();
+    if (visible.dew)  dewLayer.clearLayers();
+    if (visible.wind) windLayer.clearLayers();
+    if (visible.gust) gustLayer.clearLayers();
+    if (visible.vis)  visLayer.clearLayers();
+    if (visible.pres) presLayer.clearLayers();
+    if (visible.wx)   wxLayer.clearLayers();
 
-    let added = 0;
-    const MAX_POINTS = 2500;
+    const z = map.getZoom();
+    zoomLabelEl.textContent = String(z);
+
+    const minSep = minSepForZoom(z);
+    // Separate collision indexes per layer
+    const idxTemp = new CollisionIndex(Math.max(24, minSep));
+    const idxDew  = new CollisionIndex(Math.max(24, minSep));
+    const idxWind = new CollisionIndex(Math.max(24, minSep));
+    const idxGust = new CollisionIndex(Math.max(24, minSep));
+    const idxVis  = new CollisionIndex(Math.max(24, minSep));
+    const idxPres = new CollisionIndex(Math.max(24, minSep));
+    const idxWx   = new CollisionIndex(Math.max(24, minSep));
+
+    let scanned = 0;
+    let drawn = 0;
+    const HARD_CAP = 3500; // scan cap (safety)
 
     for (const r of rowsNow){
-      if (added >= MAX_POINTS) break;
+      if (scanned >= HARD_CAP) break;
+      scanned++;
 
       const lat = num(r.lat), lon = num(r.lon);
       if (lat == null || lon == null) continue;
 
-      const tmpf = num(r.tmpf);
-      const dwpf = num(r.dwpf);
-      const sknt = num(r.sknt);
-      const gust = num(r.gust);
-      const vsby = num(r.vsby);
-      const alti = num(r.alti);
-      const wx   = (r.wxcodes || "").trim();
-
       const st = (r.station || "").trim();
+      const alti = num(r.alti);
       const prevA = st ? prevAlt.get(st) : null;
       const dAlt = (alti != null && prevA != null) ? (alti - prevA) : null;
 
-      if (tmpf != null){
-        L.marker([lat,lon], { icon: dotIcon(Math.round(tmpf), tempColorF(tmpf)) })
-          .bindPopup(popupHTML(r, dAlt)).addTo(tempCluster);
-      }
-      if (dwpf != null){
-        L.marker([lat,lon], { icon: dotIcon(Math.round(dwpf), dewColorF(dwpf)) })
-          .bindPopup(popupHTML(r, dAlt)).addTo(dewCluster);
-      }
-
-      // Wind circles (mph, colored like particles)
-      if (sknt != null){
-        const mph = ktToMph(sknt);
-        L.marker([lat,lon], { icon: dotIcon(Math.round(mph), windColorMph(mph)) })
-          .bindPopup(popupHTML(r, dAlt)).addTo(windCluster);
-      }
-      if (gust != null){
-        const gmh = ktToMph(gust);
-        L.marker([lat,lon], { icon: dotIcon(Math.round(gmh), windColorMph(gmh)) })
-          .bindPopup(popupHTML(r, dAlt)).addTo(gustCluster);
+      // Temperature
+      if (visible.temp){
+        const tmpf = num(r.tmpf);
+        if (tmpf != null){
+          if (allowByCollision(idxTemp, lat, lon, minSep)){
+            L.marker([lat,lon], { icon: dotIcon(Math.round(tmpf), tempColorF(tmpf)) })
+              .bindPopup(popupHTML(r, dAlt)).addTo(tempLayer);
+            drawn++;
+          }
+        }
       }
 
-      if (vsby != null){
-        L.marker([lat,lon], { icon: dotIcon(Math.round(vsby), "rgb(255,255,255)") })
-          .bindPopup(popupHTML(r, dAlt)).addTo(visCluster);
+      // Dew point
+      if (visible.dew){
+        const dwpf = num(r.dwpf);
+        if (dwpf != null){
+          if (allowByCollision(idxDew, lat, lon, minSep)){
+            L.marker([lat,lon], { icon: dotIcon(Math.round(dwpf), dewColorF(dwpf)) })
+              .bindPopup(popupHTML(r, dAlt)).addTo(dewLayer);
+          }
+        }
       }
 
-      // Pressure: show alti*100 as integer (fits), color by trend
-      if (alti != null){
-        const p100 = Math.round(alti * 100); // 29.92 -> 2992
+      // Wind mph (colored like particles)
+      if (visible.wind){
+        const sknt = num(r.sknt);
+        if (sknt != null){
+          const mph = ktToMph(sknt);
+          if (allowByCollision(idxWind, lat, lon, minSep)){
+            L.marker([lat,lon], { icon: dotIcon(Math.round(mph), windColorMph(mph)) })
+              .bindPopup(popupHTML(r, dAlt)).addTo(windLayer);
+          }
+        }
+      }
+
+      // Gust mph
+      if (visible.gust){
+        const gust = num(r.gust);
+        if (gust != null){
+          const gmh = ktToMph(gust);
+          if (allowByCollision(idxGust, lat, lon, minSep)){
+            L.marker([lat,lon], { icon: dotIcon(Math.round(gmh), windColorMph(gmh)) })
+              .bindPopup(popupHTML(r, dAlt)).addTo(gustLayer);
+          }
+        }
+      }
+
+      // Visibility (simple)
+      if (visible.vis){
+        const vsby = num(r.vsby);
+        if (vsby != null){
+          if (allowByCollision(idxVis, lat, lon, minSep)){
+            L.marker([lat,lon], { icon: dotIcon(Math.round(vsby), "rgb(255,255,255)") })
+              .bindPopup(popupHTML(r, dAlt)).addTo(visLayer);
+          }
+        }
+      }
+
+      // Pressure trend — show 2992 style, color by rising/falling/steady
+      if (visible.pres && alti != null){
+        const p100 = Math.round(alti * 100); // 29.92 -> 2992 fits
         const fill = pressureTrendColor(dAlt);
-        L.marker([lat,lon], { icon: dotIcon(String(p100), fill) })
-          .bindPopup(popupHTML(r, dAlt)).addTo(presCluster);
+        if (allowByCollision(idxPres, lat, lon, minSep)){
+          L.marker([lat,lon], { icon: dotIcon(String(p100), fill) })
+            .bindPopup(popupHTML(r, dAlt)).addTo(presLayer);
+        }
       }
 
-      if (wx){
-        L.marker([lat,lon], { icon: dotIcon(wx, "rgb(255,255,255)") })
-          .bindPopup(popupHTML(r, dAlt)).addTo(wxCluster);
+      // Weather codes (can be cluttery; still thinned)
+      if (visible.wx){
+        const wx = (r.wxcodes || "").trim();
+        if (wx){
+          if (allowByCollision(idxWx, lat, lon, minSep)){
+            L.marker([lat,lon], { icon: dotIcon(wx, "rgb(255,255,255)") })
+              .bindPopup(popupHTML(r, dAlt)).addTo(wxLayer);
+          }
+        }
       }
-
-      added++;
     }
 
-    statusEl.textContent = `Plotted ${added} stations (clustered).`;
+    setStatus(`Drawn with overlap-thinning (minSep ${minSep}px).`);
   }
 
+  // Refresh on zoom end (so stations phase in/out smoothly)
+  map.on("zoomend", async () => {
+    zoomLabelEl.textContent = String(map.getZoom());
+    await refreshMetarsIfNeeded();
+  });
+
+  // Refresh when toggling overlays
+  map.on("overlayadd", async () => { await refreshMetarsIfNeeded(); });
+  map.on("overlayremove", async () => { await refreshMetarsIfNeeded(); });
+
   // -----------------------------
-  // Wind particles (daily mean for now)
+  // Wind particles
   // -----------------------------
   const windParticlesUrl = "./wind_particles_20180414.json";
 
-  async function loadParticles(){
-    statusEl.textContent = "Loading wind particles…";
+  async function loadParticlesOnce(){
+    setStatus("Loading wind particles…");
     const r = await fetch(windParticlesUrl, { cache:"no-store" });
     if (!r.ok) throw new Error(`Particles JSON HTTP ${r.status}`);
     const velData = await r.json();
 
     particlesLayer = L.velocityLayer({
       data: velData,
+
       velocityScale: 0.004,
       particleAge: 120,
       particleMultiplier: 1/800,
       lineWidth: 1.7,
+
       colorScale: [
         "rgb(0,40,160)",
         "rgb(0,120,255)",
@@ -405,6 +546,7 @@
       ],
       minVelocity: 0,
       maxVelocity: 60,
+
       displayValues: true,
       displayOptions: {
         velocityType: "Wind",
@@ -419,26 +561,18 @@
   }
 
   // -----------------------------
-  // Alerts (WWA) – stub for now
-  // -----------------------------
-  async function loadAlertsForTime(){
-    // Next step: call IEM watchwarn service for a time window and convert to GeoJSON for Leaflet.
-    // IEM supports archived WWAs downloads via request/gis/watchwarn. :contentReference[oaicite:3]{index=3}
-    alertsLayer.clearLayers();
-  }
-
-  // -----------------------------
   // Start
   // -----------------------------
   (async () => {
     try{
-      await loadParticles();
-      await refreshMetars();
-      // loadAlertsForTime(); // we’ll wire this up next
-      statusEl.textContent = "Ready. Use layer checkboxes.";
+      zoomLabelEl.textContent = String(map.getZoom());
+      await loadParticlesOnce();
+      // Load METARs immediately (temp layer is on by default)
+      await refreshMetarsIfNeeded();
+      setStatus("Ready. Toggle layers; zoom in for more stations.");
     } catch(e){
       console.error(e);
-      statusEl.textContent = `Error: ${e.message}`;
+      setStatus(`Error: ${e.message}`);
     }
   })();
 </script>
