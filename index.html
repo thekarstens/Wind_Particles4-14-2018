@@ -5,11 +5,9 @@
 <title>Apr 14, 2018 Case Study – METAR Layers + Wind Particles + Alerts</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Use your local Leaflet files (you already have leaflet.js / leaflet.css in repo root) -->
 <link rel="stylesheet" href="./leaflet.css"/>
 <script src="./leaflet.js"></script>
 
-<!-- Leaflet-velocity (YOU must have these two files in the same folder, or update paths) -->
 <link rel="stylesheet" href="./leaflet-velocity.min.css">
 <script src="./leaflet-velocity.min.js"></script>
 
@@ -80,22 +78,17 @@
     attribution: "© OpenStreetMap contributors"
   }).addTo(map);
 
-  // Optional: remove Leaflet prefix in attribution (keeps only OSM attribution)
   map.attributionControl.setPrefix(false);
 
   const statusEl    = document.getElementById("status");
   const timeLabelEl = document.getElementById("timeLabel");
   const zoomLabelEl = document.getElementById("zoomLabel");
-
   function setStatus(msg){ statusEl.textContent = msg; }
 
   // ------------------------------------------------------------
-  // 2) Time controls (OPTION 1)
-  //    IMPORTANT: start time matches your alerts files:
-  //    alerts_2018-04-14T03Z,06Z,...,21Z
-  //    So we start at 15Z (15 -> 18 -> 21 -> 00 next day)
+  // 2) Time controls (Option 1: aligns with your alert files 03Z..21Z)
   // ------------------------------------------------------------
-  let current = new Date(Date.UTC(2018, 3, 14, 15, 0, 0)); // <-- OPTION 1 FIX
+  let current = new Date(Date.UTC(2018, 3, 14, 15, 0, 0)); // 2018-04-14 15Z
   const stepHours = 3;
 
   function fmtZ(d){
@@ -115,17 +108,6 @@
   function updateTimeLabel(){ timeLabelEl.textContent = fmtZ(current); }
   updateTimeLabel();
 
-  document.getElementById("backBtn").onclick = async () => {
-    current = new Date(current.getTime() - stepHours*3600*1000);
-    updateTimeLabel();
-    await refreshIfNeeded();
-  };
-  document.getElementById("fwdBtn").onclick = async () => {
-    current = new Date(current.getTime() + stepHours*3600*1000);
-    updateTimeLabel();
-    await refreshIfNeeded();
-  };
-
   // ------------------------------------------------------------
   // 3) Overlay layers
   // ------------------------------------------------------------
@@ -137,24 +119,71 @@
   const presLayer = L.layerGroup();
   const wxLayer   = L.layerGroup();
 
-  // Alerts (GeoJSON files hosted in repo)
+  // -------- Alerts styling (editable "NWS-style" palette) --------
+  // Key = phenomena.significance (e.g., BZ.W)
+  const ALERT_COLORS = {
+    // Winter (common)
+    "BZ.W": "#FF4500", // Blizzard Warning (edit if you want a different official shade)
+    "WS.W": "#FF69B4", // Winter Storm Warning
+    "WS.A": "#4682B4", // Winter Storm Watch
+    "WW.Y": "#7B68EE", // Winter Weather Advisory
+
+    // Add more later:
+    // "TO.W": "#FF0000" (Tornado Warning), etc.
+  };
+
+  const ALERT_NAMES = {
+    "BZ.W": "Blizzard Warning",
+    "WS.W": "Winter Storm Warning",
+    "WS.A": "Winter Storm Watch",
+    "WW.Y": "Winter Weather Advisory"
+  };
+
+  function alertKey(p){
+    const ph = (p.phenomena || "").trim();
+    const sg = (p.significance || "").trim();
+    return (ph && sg) ? `${ph}.${sg}` : "";
+  }
+  function alertColor(p){
+    const k = alertKey(p);
+    return ALERT_COLORS[k] || "#cc0000";
+  }
+  function alertName(p){
+    const k = alertKey(p);
+    return ALERT_NAMES[k] || k || "Alert";
+  }
+
   const alertsLayer = L.geoJSON(null, {
-    style: (feat) => ({ weight: 2, color: "#cc0000", fillOpacity: 0.10 }),
+    style: (feat) => {
+      const p = feat.properties || {};
+      const c = alertColor(p);
+      return { color: c, weight: 2, fillColor: c, fillOpacity: 0.18 };
+    },
     onEachFeature: (feat, layer) => {
       const p = feat.properties || {};
-      const title = `${p.phenomena || ""}${p.significance ? "." + p.significance : ""}`.trim();
-      const lines = [];
-      if (title) lines.push(`<b>${title}</b>`);
-      if (p.wfo) lines.push(`WFO: ${p.wfo}`);
-      if (p.status) lines.push(`Status: ${p.status}`);
-      if (p.issuance) lines.push(`Issued: ${p.issuance}`);
-      if (p.expire) lines.push(`Expires: ${p.expire}`);
-      layer.bindPopup(lines.join("<br>") || "Alert");
+      const k = alertKey(p);
+      const c = alertColor(p);
+      const name = alertName(p);
+
+      layer.bindPopup(`
+        <div style="font:600 13px/1.3 Arial,sans-serif">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="width:14px;height:14px;border-radius:3px;background:${c};border:1px solid #333;display:inline-block"></span>
+            <div style="font-size:14px"><b>${name}</b></div>
+          </div>
+          <div style="opacity:.85">Code: <b>${k || "—"}</b></div>
+          <div style="opacity:.85">WFO: <b>${p.wfo || "—"}</b></div>
+          <div>Issued: <b>${p.issuance || "—"}</b></div>
+          <div>Expires: <b>${p.expire || "—"}</b></div>
+          ${p.status ? `<div>Status: <b>${p.status}</b></div>` : ``}
+        </div>
+      `);
     }
   });
 
-  // Particles layer is added later to keep it optional
+  // Particles layer built on demand
   let particlesLayer = null;
+  let particlesEnabled = false;
 
   const overlays = {
     "Temperature (°F)": tempLayer,
@@ -165,6 +194,7 @@
     "Pressure (trend)": presLayer,
     "Weather Codes": wxLayer,
     "Alerts (WWA)": alertsLayer
+    // "Wind particles" added after we create the layer
   };
 
   const layerControl = L.control.layers(
@@ -175,7 +205,6 @@
 
   // ------------------------------------------------------------
   // 4) Collision thinning (spatial hash)
-  //    Drops stations when circles would overlap/touch.
   // ------------------------------------------------------------
   class CollisionIndex {
     constructor(cellSizePx){
@@ -207,12 +236,11 @@
   }
 
   function minSepForZoom(z){
-    // tune these if you want more/less thinning
     if (z <= 4) return 54;
     if (z === 5) return 46;
     if (z === 6) return 38;
     if (z === 7) return 32;
-    return 0; // z >= 8 show all
+    return 0;
   }
 
   function allowByCollision(index, lat, lon, minSepPx){
@@ -222,7 +250,7 @@
   }
 
   // ------------------------------------------------------------
-  // 5) Color ramps
+  // 5) Color ramps (same as your current)
   // ------------------------------------------------------------
   function piecewiseColor(x, stops){
     if (x == null || !Number.isFinite(x)) return "rgb(255,255,255)";
@@ -241,29 +269,27 @@
     return "rgb(255,255,255)";
   }
 
-  // Temperature palette you requested
   function tempColorF(t){
     return piecewiseColor(t, [
-      {v: 10, c: [170, 220, 255]}, // light blue
-      {v: 20, c: [120, 190, 255]}, // light blue
-      {v: 30, c: [0, 70, 200]},    // dark blue
-      {v: 40, c: [0, 170, 0]},     // green
-      {v: 50, c: [150, 255, 150]}, // light green
-      {v: 60, c: [255, 235, 0]},   // yellow
-      {v: 70, c: [255, 140, 0]},   // orange
-      {v: 85, c: [255, 80, 0]}     // deeper orange
+      {v: 10, c: [170, 220, 255]},
+      {v: 20, c: [120, 190, 255]},
+      {v: 30, c: [0, 70, 200]},
+      {v: 40, c: [0, 170, 0]},
+      {v: 50, c: [150, 255, 150]},
+      {v: 60, c: [255, 235, 0]},
+      {v: 70, c: [255, 140, 0]},
+      {v: 85, c: [255, 80, 0]}
     ]);
   }
 
-  // Dewpoint palette you requested (brown -> green at 60/70)
   function dewColorF(td){
     return piecewiseColor(td, [
-      {v: 10, c: [90, 55, 20]},    // dark brown
-      {v: 20, c: [140, 95, 40]},   // brown
-      {v: 30, c: [200, 160, 110]}, // light brown
-      {v: 50, c: [190, 200, 140]}, // tan-ish transition
-      {v: 60, c: [0, 170, 0]},     // green
-      {v: 70, c: [0, 90, 0]}       // dark green
+      {v: 10, c: [90, 55, 20]},
+      {v: 20, c: [140, 95, 40]},
+      {v: 30, c: [200, 160, 110]},
+      {v: 50, c: [190, 200, 140]},
+      {v: 60, c: [0, 170, 0]},
+      {v: 70, c: [0, 90, 0]}
     ]);
   }
 
@@ -285,7 +311,6 @@
     return "rgb(240,240,240)";
   }
 
-  // Visibility fill: near zero = solid white, clearer = more transparent, clear = open circle
   function visStyle(vis){
     if (vis == null || !Number.isFinite(vis)) {
       return { bg:"rgba(255,255,255,0.65)", border:"#333" };
@@ -323,13 +348,12 @@
   }
   function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
 
-  // Parse visibility strings like "1/4", "1 1/2", "M1/4"
   function parseVisMiles(raw){
     if (raw == null) return { miles:null, label:"" };
     let s = String(raw).trim();
     if (!s) return { miles:null, label:"" };
 
-    if (s.startsWith("M")) s = s.slice(1); // M1/4 -> 1/4
+    if (s.startsWith("M")) s = s.slice(1);
     s = s.replace(/\s+/g, " ");
 
     const n = Number(s);
@@ -353,7 +377,6 @@
         return { miles:val, label:formatVisLabel(val) };
       }
     }
-
     return { miles:null, label:String(raw).trim() };
   }
 
@@ -361,7 +384,6 @@
     if (!Number.isFinite(x)) return "";
     if (x >= 10) return "10+";
 
-    // nearest 1/8
     const denom = 8;
     const whole = Math.floor(x);
     const frac = x - whole;
@@ -380,10 +402,7 @@
   }
 
   // ------------------------------------------------------------
-  // 8) METAR fetch
-  //    - SD first (wins in thinning)
-  //    - then rest of region
-  //    - also fetch previous time to compute pressure trend
+  // 8) METAR fetch (same as your current)
   // ------------------------------------------------------------
   const reportType = 3;
   const SD_ONLY = ["SD_ASOS"];
@@ -470,7 +489,6 @@
 
   // ------------------------------------------------------------
   // 9) Alerts loader
-  //     Looks for: ./alerts_YYYY-MM-DDTHHZ.geojson
   // ------------------------------------------------------------
   function alertsFileNameForTime(d){
     const Y = d.getUTCFullYear();
@@ -483,15 +501,12 @@
   async function loadAlerts(){
     if (!map.hasLayer(alertsLayer)) return;
     const url = alertsFileNameForTime(current);
-
     try{
       const r = await fetch(url, { cache:"no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const gj = await r.json();
       alertsLayer.clearLayers();
       alertsLayer.addData(gj);
-      // Optional status message:
-      // console.log("Alerts loaded", url, gj?.features?.length);
     } catch(e){
       console.warn("Alerts load failed:", url, e.message);
       alertsLayer.clearLayers();
@@ -503,7 +518,6 @@
   // ------------------------------------------------------------
   async function refreshAll(){
     setStatus("Loading METARs…");
-
     const prev = new Date(current.getTime() - stepHours*3600*1000);
 
     const [sdNow, restNow, sdPrev, restPrev] = await Promise.all([
@@ -516,7 +530,6 @@
     const rowsNow  = sdNow.concat(restNow);
     const rowsPrev = sdPrev.concat(restPrev);
 
-    // map previous altimeter for trend
     const prevAlt = new Map();
     for (const r of rowsPrev){
       const st = (r.station || "").trim();
@@ -556,7 +569,6 @@
 
     const HARD_CAP = 4000;
     let scanned = 0;
-    let drawn = 0;
 
     for (const r of rowsNow){
       if (scanned >= HARD_CAP) break;
@@ -575,7 +587,6 @@
         if (tmpf != null && allowByCollision(idxTemp, lat, lon, minSep)){
           L.marker([lat,lon], { icon: dotIcon(String(Math.round(tmpf)), tempColorF(tmpf), 28, 12) })
             .bindPopup(popupHTML(r, dAlt)).addTo(tempLayer);
-          drawn++;
         }
       }
 
@@ -584,7 +595,6 @@
         if (dwpf != null && allowByCollision(idxDew, lat, lon, minSep)){
           L.marker([lat,lon], { icon: dotIcon(String(Math.round(dwpf)), dewColorF(dwpf), 28, 12) })
             .bindPopup(popupHTML(r, dAlt)).addTo(dewLayer);
-          drawn++;
         }
       }
 
@@ -595,7 +605,6 @@
           if (allowByCollision(idxWind, lat, lon, minSep)){
             L.marker([lat,lon], { icon: dotIcon(String(Math.round(mph)), windColorMph(mph), 28, 12) })
               .bindPopup(popupHTML(r, dAlt)).addTo(windLayer);
-            drawn++;
           }
         }
       }
@@ -607,7 +616,6 @@
           if (allowByCollision(idxGust, lat, lon, minSep)){
             L.marker([lat,lon], { icon: dotIcon(String(Math.round(gmh)), windColorMph(gmh), 28, 12) })
               .bindPopup(popupHTML(r, dAlt)).addTo(gustLayer);
-            drawn++;
           }
         }
       }
@@ -620,7 +628,6 @@
           const style = visStyle(visMi);
           L.marker([lat,lon], { icon: dotIcon(label, style.bg, 28, 11, style.border) })
             .bindPopup(popupHTML(r, dAlt)).addTo(visLayer);
-          drawn++;
         }
       }
 
@@ -633,7 +640,6 @@
         if (allowByCollision(idxPres, lat, lon, minSep)){
           L.marker([lat,lon], { icon: dotIcon(txt, fill, size, font, border) })
             .bindPopup(popupHTML(r, dAlt)).addTo(presLayer);
-          drawn++;
         }
       }
 
@@ -642,36 +648,40 @@
         if (wx && allowByCollision(idxWx, lat, lon, minSep)){
           L.marker([lat,lon], { icon: dotIcon(wx, "rgba(255,255,255,0.85)", 28, 10) })
             .bindPopup(popupHTML(r, dAlt)).addTo(wxLayer);
-          drawn++;
         }
       }
     }
 
     await loadAlerts();
+    if (particlesEnabled) await loadParticlesForTime(); // keep particles in sync
     setStatus(`Overlap-thinning active (minSep ${minSep}px).`);
   }
 
-  map.on("zoomend", async () => {
-    zoomLabelEl.textContent = String(map.getZoom());
-    await refreshIfNeeded();
-  });
-  map.on("overlayadd", async () => { await refreshIfNeeded(); });
-  map.on("overlayremove", async () => { await refreshIfNeeded(); });
-
   // ------------------------------------------------------------
-  // 11) Wind particles
-  //     Your repo file: wind_particles_20180414.json
+  // 11) Wind particles (time-based + fallback, doesn’t break current)
   // ------------------------------------------------------------
-  const windParticlesUrl = "./wind_particles_20180414.json";
+  const particlesFallbackUrl = "./wind_particles_20180414.json"; // your existing file
 
-  async function loadParticlesOnce(){
-    setStatus("Loading wind particles…");
-    const r = await fetch(windParticlesUrl, { cache:"no-store" });
-    if (!r.ok) throw new Error(`Particles JSON HTTP ${r.status}`);
-    const velData = await r.json();
+  function particlesFileNameForTime(d){
+    const Y = d.getUTCFullYear();
+    const M = String(d.getUTCMonth()+1).padStart(2,"0");
+    const D = String(d.getUTCDate()).padStart(2,"0");
+    const H = String(d.getUTCHours()).padStart(2,"0");
+    return `./wind_particles_${Y}-${M}-${D}T${H}Z.json`;
+  }
+
+  async function fetchJSON(url){
+    const r = await fetch(url, { cache:"no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  async function buildParticlesLayer(data){
+    // If a layer exists, remove it cleanly
+    if (particlesLayer && map.hasLayer(particlesLayer)) map.removeLayer(particlesLayer);
 
     particlesLayer = L.velocityLayer({
-      data: velData,
+      data,
       velocityScale: 0.004,
       particleAge: 120,
       particleMultiplier: 1/800,
@@ -695,17 +705,74 @@
       }
     });
 
-    // Add to layer control so you can toggle it
-    layerControl.addOverlay(particlesLayer, "Wind particles");
+    map.addLayer(particlesLayer);
+  }
+
+  async function loadParticlesForTime(){
+    const tryUrl = particlesFileNameForTime(current);
+    try{
+      const data = await fetchJSON(tryUrl);
+      await buildParticlesLayer(data);
+    } catch(e){
+      console.warn("Particles time file missing, falling back:", tryUrl, e.message);
+      const data = await fetchJSON(particlesFallbackUrl);
+      await buildParticlesLayer(data);
+    }
+  }
+
+  function addParticlesToggle(){
+    // Create a dummy layer group entry for the checkbox,
+    // then intercept add/remove to control velocity layer.
+    const dummy = L.layerGroup();
+    layerControl.addOverlay(dummy, "Wind particles");
+
+    map.on("overlayadd", async (ev) => {
+      if (ev.layer === dummy){
+        particlesEnabled = true;
+        setStatus("Loading wind particles…");
+        await loadParticlesForTime();
+        setStatus("Wind particles on.");
+      }
+    });
+
+    map.on("overlayremove", (ev) => {
+      if (ev.layer === dummy){
+        particlesEnabled = false;
+        if (particlesLayer && map.hasLayer(particlesLayer)) map.removeLayer(particlesLayer);
+        setStatus("Wind particles off.");
+      }
+    });
   }
 
   // ------------------------------------------------------------
-  // 12) Start
+  // 12) Hook events
+  // ------------------------------------------------------------
+  map.on("zoomend", async () => {
+    zoomLabelEl.textContent = String(map.getZoom());
+    await refreshIfNeeded();
+  });
+
+  map.on("overlayadd", async () => { await refreshIfNeeded(); });
+  map.on("overlayremove", async () => { await refreshIfNeeded(); });
+
+  document.getElementById("backBtn").onclick = async () => {
+    current = new Date(current.getTime() - stepHours*3600*1000);
+    updateTimeLabel();
+    await refreshIfNeeded();
+  };
+  document.getElementById("fwdBtn").onclick = async () => {
+    current = new Date(current.getTime() + stepHours*3600*1000);
+    updateTimeLabel();
+    await refreshIfNeeded();
+  };
+
+  // ------------------------------------------------------------
+  // 13) Start
   // ------------------------------------------------------------
   (async () => {
     try{
       zoomLabelEl.textContent = String(map.getZoom());
-      await loadParticlesOnce();     // creates the checkbox for particles
+      addParticlesToggle();          // adds checkbox (safe)
       await refreshIfNeeded();       // draws default layer(s)
       setStatus("Ready. Toggle layers; zoom in for more stations.");
     } catch(e){
