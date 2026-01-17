@@ -129,9 +129,23 @@
   const presLayer = L.layerGroup();
   const wxLayer   = L.layerGroup();
 
-  // Alerts (GeoJSON you will host in repo)
+  // Alerts (GeoJSON you host in repo)
   const alertsLayer = L.geoJSON(null, {
-    style: () => ({ weight: 2, color: "#cc0000", fillOpacity: 0.08 })
+    style: (feat) => {
+      // simple: red outline, light fill
+      return { weight: 2, color: "#cc0000", fillOpacity: 0.08 };
+    },
+    onEachFeature: (feat, layer) => {
+      const p = feat.properties || {};
+      const title = `${p.phenomena || ""}${p.significance ? "." + p.significance : ""}`.trim();
+      const lines = [];
+      if (title) lines.push(`<b>${title}</b>`);
+      if (p.wfo) lines.push(`WFO: ${p.wfo}`);
+      if (p.status) lines.push(`Status: ${p.status}`);
+      if (p.issuance) lines.push(`Issued: ${p.issuance}`);
+      if (p.expire) lines.push(`Expires: ${p.expire}`);
+      layer.bindPopup(lines.join("<br>") || "Alert");
+    }
   });
 
   let particlesLayer = null;
@@ -255,23 +269,26 @@
   }
 
   function pressureTrendColor(deltaInHg){
-    // lighter than before
-    if (deltaInHg == null || !Number.isFinite(deltaInHg)) return "rgb(245,245,245)";
-    if (deltaInHg > 0.02)  return "rgb(195,235,195)"; // light green
-    if (deltaInHg < -0.02) return "rgb(245,200,200)"; // light red
-    return "rgb(235,235,235)";                        // light gray
+    if (deltaInHg == null || !Number.isFinite(deltaInHg)) return "rgb(248,248,248)";
+    if (deltaInHg > 0.02)  return "rgb(215,245,215)";
+    if (deltaInHg < -0.02) return "rgb(255,220,220)";
+    return "rgb(240,240,240)";
   }
 
-  // Visibility fill: near zero = solid white, clear = open circle
+  // Visibility fill: near zero = solid white, clearer = more transparent,
+  // clear (>=10) = open circle
   function visStyle(vis){
-    if (vis == null || !Number.isFinite(vis)) return { bg:"rgba(255,255,255,1)", text:"#111" };
-    const v = Math.max(0, Math.min(10, vis));    // clamp 0..10
-    const alpha = 1 - (v / 10);                  // 0..1 (clear -> 0)
-    return { bg:`rgba(255,255,255,${alpha.toFixed(3)})`, text:"#111" };
+    if (vis == null || !Number.isFinite(vis)) {
+      return { bg:"rgba(255,255,255,0.65)", border:"#333", text:"#111" };
+    }
+    const v = Math.max(0, Math.min(10, vis));
+    const alpha = 1 - (v / 10);
+    const border = (v < 1) ? "#666" : "#333";
+    return { bg:`rgba(255,255,255,${alpha.toFixed(3)})`, border, text:"#111" };
   }
 
   // -----------------------------
-  // Icons (variable size)
+  // Icons
   // -----------------------------
   function dotIcon(txt, fill, size=28, fontSize=12, borderColor="#333"){
     return L.divIcon({
@@ -302,16 +319,12 @@
     if (raw == null) return { miles:null, label:"" };
     let s = String(raw).trim();
     if (!s) return { miles:null, label:"" };
-
-    // Common METAR-ish forms
-    if (s.startsWith("M")) s = s.slice(1); // "M1/4" -> treat like 1/4
+    if (s.startsWith("M")) s = s.slice(1);
     s = s.replace(/\s+/g, " ");
 
-    // Pure number
     const n = Number(s);
     if (Number.isFinite(n)) return { miles:n, label:formatVisLabel(n) };
 
-    // "a b/c"
     const parts = s.split(" ");
     let whole = 0;
     let frac = null;
@@ -331,16 +344,13 @@
       }
     }
 
-    // Fallback: return raw label
     return { miles:null, label:String(raw).trim() };
   }
 
-  // Convert a number to a nice fraction label (1/8, 1/4, 1/2, 3/4, 1 1/2)
   function formatVisLabel(x){
     if (!Number.isFinite(x)) return "";
     if (x >= 10) return "10+";
 
-    // Snap to nearest 1/8 for small vis
     const denom = 8;
     const whole = Math.floor(x);
     const frac = x - whole;
@@ -445,10 +455,9 @@
 
   // -----------------------------
   // Alerts (WWA) loader
+  // FIXED: now looks for ./alerts_YYYY-MM-DDTHHZ.geojson
   // -----------------------------
   function alertsFileNameForTime(d){
-    // You will create these GeoJSON files in your repo, e.g.:
-    // alerts_2018-04-14T22Z.geojson
     const Y = d.getUTCFullYear();
     const M = String(d.getUTCMonth()+1).padStart(2,"0");
     const D = String(d.getUTCDate()).padStart(2,"0");
@@ -489,7 +498,6 @@
     const rowsNow  = sdNow.concat(restNow);
     const rowsPrev = sdPrev.concat(restPrev);
 
-    // previous altimeter by station
     const prevAlt = new Map();
     for (const r of rowsPrev){
       const st = (r.station || "").trim();
@@ -497,7 +505,6 @@
       if (st && a != null) prevAlt.set(st, a);
     }
 
-    // Clear visible layers only
     const visible = {
       temp: map.hasLayer(tempLayer),
       dew:  map.hasLayer(dewLayer),
@@ -520,7 +527,6 @@
 
     const minSep = minSepForZoom(z);
 
-    // Separate collision indexes per layer
     const idxTemp = new CollisionIndex(Math.max(24, minSep));
     const idxDew  = new CollisionIndex(Math.max(24, minSep));
     const idxWind = new CollisionIndex(Math.max(24, minSep));
@@ -544,7 +550,6 @@
       const prevA = st ? prevAlt.get(st) : null;
       const dAlt = (alti != null && prevA != null) ? (alti - prevA) : null;
 
-      // Temp (whole number)
       if (visible.temp){
         const tmpf = num(r.tmpf);
         if (tmpf != null){
@@ -555,7 +560,6 @@
         }
       }
 
-      // Dew (whole number)
       if (visible.dew){
         const dwpf = num(r.dwpf);
         if (dwpf != null){
@@ -566,7 +570,6 @@
         }
       }
 
-      // Wind mph (colored)
       if (visible.wind){
         const sknt = num(r.sknt);
         if (sknt != null){
@@ -578,7 +581,6 @@
         }
       }
 
-      // Gust mph (colored)
       if (visible.gust){
         const gust = num(r.gust);
         if (gust != null){
@@ -590,7 +592,6 @@
         }
       }
 
-      // Visibility (fraction-friendly, fog gradient)
       if (visible.vis){
         const visObj = parseVisMiles(r.vsby);
         const visMi = visObj.miles;
@@ -598,26 +599,24 @@
         if (label){
           const style = visStyle(visMi);
           if (allowByCollision(idxVis, lat, lon, minSep)){
-            L.marker([lat,lon], { icon: dotIcon(label, style.bg, 28, 11) })
+            L.marker([lat,lon], { icon: dotIcon(label, style.bg, 28, 11, style.border) })
               .bindPopup(popupHTML(r, dAlt)).addTo(visLayer);
           }
         }
       }
 
-      // Pressure (bigger circles, lighter colors, decimal)
       if (visible.pres && alti != null){
         const fill = pressureTrendColor(dAlt);
-        const txt = alti.toFixed(2);         // decimal shown
-        const size = 38;                     // bigger
-        const font = 11;                     // fits "29.92"
-        const border = "#777";               // softer border
+        const txt = alti.toFixed(2);
+        const size = 44;
+        const font = 12;
+        const border = "#999";
         if (allowByCollision(idxPres, lat, lon, minSep)){
           L.marker([lat,lon], { icon: dotIcon(txt, fill, size, font, border) })
             .bindPopup(popupHTML(r, dAlt)).addTo(presLayer);
         }
       }
 
-      // Weather codes
       if (visible.wx){
         const wx = (r.wxcodes || "").trim();
         if (wx){
@@ -633,13 +632,11 @@
     setStatus(`Overlap-thinning active (minSep ${minSep}px).`);
   }
 
-  // Refresh on zoom end
   map.on("zoomend", async () => {
     zoomLabelEl.textContent = String(map.getZoom());
     await refreshIfNeeded();
   });
 
-  // Refresh when toggling overlays
   map.on("overlayadd", async () => { await refreshIfNeeded(); });
   map.on("overlayremove", async () => { await refreshIfNeeded(); });
 
@@ -690,7 +687,7 @@
       zoomLabelEl.textContent = String(map.getZoom());
       await loadParticlesOnce();
       await refreshIfNeeded();
-      setStatus("Ready. Zoom in for more stations. Visibility supports fractions.");
+      setStatus("Ready. Toggle layers; zoom in for more stations.");
     } catch(e){
       console.error(e);
       setStatus(`Error: ${e.message}`);
