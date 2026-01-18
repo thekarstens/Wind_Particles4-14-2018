@@ -107,7 +107,6 @@ const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "© OpenStreetMap contributors"
 }).addTo(map);
 
-// remove Leaflet prefix (keeps only OSM attribution)
 map.attributionControl.setPrefix(false);
 
 const statusEl    = document.getElementById("status");
@@ -345,18 +344,15 @@ function dotIcon(txt, fill, size=28, fontSize=12, borderColor="#333"){
 
 /* Wind arrow as inline SVG divIcon */
 function windArrowIcon(bearingDeg, mph){
-  // bearingDeg: direction wind is blowing TO
   const spd = (mph == null || !Number.isFinite(mph)) ? 0 : mph;
   const color = windColorMph(spd);
 
-  // length scaling (px)
   const Lmin = 14, Lmax = 52;
   const len = Math.max(Lmin, Math.min(Lmax, Lmin + spd * 0.65));
 
   const w = 60, h = 60;
   const cx = w/2, cy = h/2;
 
-  // Draw arrow pointing up (0 deg), then rotate container
   const svg = `
     <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
       <g transform="translate(${cx},${cy})">
@@ -387,7 +383,6 @@ function num(v){
 }
 function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
 
-/* visibility parsing (fractions) */
 function parseVisMiles(raw){
   if (raw == null) return { miles:null, label:"" };
   let s = String(raw).trim();
@@ -513,7 +508,7 @@ async function fetchRows(d, networks){
 }
 
 /* ------------------------------------------------------------
-   10) Alerts styling (best effort)
+   10) Alerts styling + LOADER (UPDATED for your new filenames)
 ------------------------------------------------------------ */
 const NWS_EVENT_COLOR = {
   "Blizzard Warning": "#FF4500",
@@ -544,7 +539,6 @@ function eventNameFromProps(p){
   const phen = pickProp(p, ["phenomena","phenom","PHENOM","phen"]);
   const sig  = pickProp(p, ["significance","sig","SIG"]);
   if (phen && sig){
-    // Map common winter keys to friendly names
     const key = `${phen}.${sig}`.toUpperCase();
     if (key === "BZ.W") return "Blizzard Warning";
     if (key === "WS.W") return "Winter Storm Warning";
@@ -552,7 +546,7 @@ function eventNameFromProps(p){
     if (key === "WW.Y") return "Winter Weather Advisory";
     return key;
   }
-  // Some files only have WFO/ETN/STATUS (not enough to know hazard)
+
   const wfo = pickProp(p, ["WFO","wfo"]);
   const etn = pickProp(p, ["ETN","etn"]);
   return (wfo || etn) ? `Alert ${wfo || ""} ${etn || ""}`.trim() : "Alert";
@@ -565,11 +559,20 @@ function colorForAlertName(name){
   if (lower.includes("winter storm") && lower.includes("warning")) return NWS_EVENT_COLOR["Winter Storm Warning"];
   if (lower.includes("winter storm") && lower.includes("watch")) return NWS_EVENT_COLOR["Winter Storm Watch"];
   if (lower.includes("winter weather") && lower.includes("advisory")) return NWS_EVENT_COLOR["Winter Weather Advisory"];
-  // fallback
-  return "#CC0000";
+  return "#CC0000"; // fallback (what you were seeing)
 }
 
-function alertsFileNameForTime(d){
+// NEW (your repo): alerts_20180414_0000Z.geojson
+function alertsFileCompactHourly(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `./alerts_${Y}${M}${D}_${H}00Z.geojson`;
+}
+
+// OLD (your repo): alerts_2018-04-14T21Z.geojson
+function alertsFileOldDash(d){
   const Y = d.getUTCFullYear();
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
@@ -577,14 +580,42 @@ function alertsFileNameForTime(d){
   return `./alerts_${Y}-${M}-${D}T${H}Z.geojson`;
 }
 
+// Extra fallback (sometimes people store T2100Z)
+function alertsFileOldWithMinutes(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `./alerts_${Y}-${M}-${D}T${H}00Z.geojson`;
+}
+
+async function fetchFirstOk(urls){
+  let lastErr = "";
+  for (const u of urls){
+    try{
+      const r = await fetch(u, { cache:"no-store" });
+      if (!r.ok) { lastErr = `HTTP ${r.status}`; continue; }
+      const gj = await r.json();
+      return { url: u, gj };
+    } catch(e){
+      lastErr = e.message || String(e);
+    }
+  }
+  throw new Error(lastErr || "No alert file matched");
+}
+
 async function loadAlerts(){
   if (!map.hasLayer(alertsLayer)) return;
 
-  const url = alertsFileNameForTime(current);
+  // Prefer your new hourly timeline files, but keep backward compatibility
+  const candidates = [
+    alertsFileCompactHourly(current),
+    alertsFileOldDash(current),
+    alertsFileOldWithMinutes(current)
+  ];
+
   try{
-    const r = await fetch(url, { cache:"no-store" });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const gj = await r.json();
+    const { url, gj } = await fetchFirstOk(candidates);
 
     alertsLayer.clearLayers();
 
@@ -600,7 +631,6 @@ async function loadAlerts(){
         const name = eventNameFromProps(p);
         const c = colorForAlertName(name);
 
-        // student-friendly summary
         const wfo = pickProp(p, ["WFO","wfo"]);
         const etn = pickProp(p, ["ETN","etn"]);
         const status = pickProp(p, ["STATUS","status"]);
@@ -614,7 +644,6 @@ async function loadAlerts(){
         if (issued) lines.push(`Issued: <b>${issued}</b>`);
         if (expire) lines.push(`Expires: <b>${expire}</b>`);
 
-        // If your file lacks hazard type, tell you in popup (student-friendly)
         const hasHazard = !!pickProp(p, ["event","phenomena","phenom","PHENOM","significance","sig","SIG"]);
         if (!hasHazard){
           lines.push(`<div style="margin-top:6px;opacity:.75">
@@ -626,9 +655,13 @@ async function loadAlerts(){
       }
     }).eachLayer(l => alertsLayer.addLayer(l));
 
+    // Small status breadcrumb to confirm which file actually loaded
+    setStatus(`Alerts loaded: ${url.replace("./","")}`);
+
   } catch(e){
-    console.warn("Alerts load failed:", url, e.message);
+    console.warn("Alerts load failed:", e.message);
     alertsLayer.clearLayers();
+    setStatus("Alerts not found for this hour (check filenames).");
   }
 }
 
@@ -636,10 +669,6 @@ async function loadAlerts(){
    11) Daily particles (toggle + day buttons)
 ------------------------------------------------------------ */
 function particlesFileForDay(dayNum){
-  // Expect these in your repo root:
-  // wind_particles_20180413.json
-  // wind_particles_20180414.json
-  // wind_particles_20180415.json
   return `./wind_particles_201804${String(dayNum).padStart(2,"0")}.json`;
 }
 
@@ -697,7 +726,7 @@ async function refreshParticlesIfOn(){
   }
 }
 
-/* Toggle handlers for particles */
+/* Toggle handlers for particles + alerts */
 map.on("overlayadd", async (e) => {
   if (e.layer === particlesToggle) await refreshParticlesIfOn();
   if (e.layer === alertsLayer) await loadAlerts();
@@ -727,7 +756,6 @@ async function refreshAll(){
   const rowsNow  = sdNow.concat(restNow);
   const rowsPrev = sdPrev.concat(restPrev);
 
-  // previous altimeter for pressure trend
   const prevAlt = new Map();
   for (const r of rowsPrev){
     const st = (r.station || "").trim();
@@ -735,7 +763,6 @@ async function refreshAll(){
     if (st && a != null) prevAlt.set(st, a);
   }
 
-  // Clear layers
   [tempLayer, dewLayer, windNumLayer, windArrowLayer, gustLayer, visLayer, presLayer, wxLayer].forEach(l => l.clearLayers());
 
   const z = map.getZoom();
@@ -757,7 +784,6 @@ async function refreshAll(){
     if (lat == null || lon == null) continue;
     total++;
 
-    // Collision-thinning gate per layer (lets you keep “SD dense” feel while still preventing clutter)
     const st = (r.station || "").trim();
     const alti = num(r.alti);
     const prevA = st ? prevAlt.get(st) : null;
@@ -778,52 +804,44 @@ async function refreshAll(){
     const visObj = parseVisMiles(r.vsby);
     const visMi = visObj.miles;
 
-    // Temp
     if (tmp != null && allowByCollision(idxTemp, lat, lon, minSep)){
       L.marker([lat,lon], { icon: dotIcon(String(Math.round(tmp)), tempColorF(tmp), 28, 12) })
         .bindPopup(popup).addTo(tempLayer);
     }
 
-    // Dew
     if (dew != null && allowByCollision(idxDew, lat, lon, minSep)){
       L.marker([lat,lon], { icon: dotIcon(String(Math.round(dew)), dewColorF(dew), 28, 12) })
         .bindPopup(popup).addTo(dewLayer);
     }
 
-    // Wind numbers
     if (mph != null && allowByCollision(idxWind, lat, lon, minSep)){
       L.marker([lat,lon], { icon: dotIcon(String(Math.round(mph)), windColorMph(mph), 28, 12) })
         .bindPopup(popup).addTo(windNumLayer);
     }
 
-    // Wind arrows (direction + speed scaling)
     if (mph != null && drct != null && allowByCollision(idxArr, lat, lon, minSep)){
-      const toDir = (drct + 180) % 360; // arrow points TO
+      const toDir = (drct + 180) % 360;
       L.marker([lat,lon], { icon: windArrowIcon(toDir, mph) })
         .bindPopup(popup).addTo(windArrowLayer);
     }
 
-    // Gusts
     if (gmh != null && allowByCollision(idxGust, lat, lon, minSep)){
       L.marker([lat,lon], { icon: dotIcon(String(Math.round(gmh)), windColorMph(gmh), 30, 12) })
         .bindPopup(popup).addTo(gustLayer);
     }
 
-    // Visibility
     if ((visObj.label || "").trim() && allowByCollision(idxVis, lat, lon, minSep)){
       const style = visStyle(visMi);
       L.marker([lat,lon], { icon: dotIcon(visObj.label, style.bg, 30, 11, style.border) })
         .bindPopup(popup).addTo(visLayer);
     }
 
-    // Pressure
     if (alti != null && allowByCollision(idxPres, lat, lon, minSep)){
       const fill = pressureTrendColor(dAlt);
       L.marker([lat,lon], { icon: dotIcon(alti.toFixed(2), fill, 44, 12, "#999") })
         .bindPopup(popup).addTo(presLayer);
     }
 
-    // Weather codes
     const wx = (r.wxcodes || "").trim();
     if (wx && allowByCollision(idxWx, lat, lon, minSep)){
       L.marker([lat,lon], { icon: dotIcon(wx, "rgba(255,255,255,0.85)", 30, 10, "#999") })
@@ -838,7 +856,6 @@ async function refreshAll(){
   await loadAlerts();
 }
 
-/* Initial render */
 refreshAll().catch(err => {
   console.error(err);
   setStatus("Error: " + err.message);
