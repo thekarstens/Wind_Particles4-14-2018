@@ -404,6 +404,10 @@ let particlesLayer = null;
 
 const baseLayers = { "OpenStreetMap": osm };
 
+// IMPORTANT: HRRR tile layers must be constructed BEFORE adding to the layer control.
+// Otherwise Leaflet will receive null layers and crash when it tries to call setZIndex().
+ensureHRRRLayers();
+
 const overlays = {
   "Temperature (°F)": tempLayer,
   "Dew Point (°F)": dewLayer,
