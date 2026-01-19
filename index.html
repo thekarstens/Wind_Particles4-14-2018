@@ -56,11 +56,57 @@
     font:600 11px/1.2 Arial, sans-serif;
     opacity:.78;
   }
+
+  /* TV-style banner + dynamic legend */
+  .tvbanner{
+    position:absolute;
+    top:0; left:0; right:0;
+    z-index:99999;
+    background:rgba(11,28,45,0.92);
+    color:#fff;
+    font:800 18px/1.2 Arial, sans-serif;
+    letter-spacing:0.5px;
+    padding:10px 16px;
+    border-bottom:1px solid rgba(255,255,255,0.15);
+    display:none;
+    text-transform:uppercase;
+    pointer-events:none;
+  }
+  .legend{
+    position:absolute;
+    left:14px;
+    bottom:18px;
+    z-index:9999;
+    background:rgba(255,255,255,0.95);
+    border:1px solid #ccc;
+    border-radius:12px;
+    padding:10px 12px;
+    font:700 12px/1.25 Arial, sans-serif;
+    min-width:220px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.10);
+    display:none;
+  }
+  .legend .title{ font-size:12px; margin-bottom:6px; }
+  .legend .bar{
+    height:10px;
+    border-radius:6px;
+    border:1px solid #333;
+    margin:6px 0 6px 0;
+  }
+  .legend .ticks{
+    display:flex;
+    justify-content:space-between;
+    font:700 11px/1.2 Arial, sans-serif;
+    opacity:0.85;
+  }
+
 </style>
 </head>
 
 <body>
 <div id="map"></div>
+<div id="banner" class="tvbanner"></div>
+<div id="legend" class="legend"></div>
 
 <div class="panel">
   <div style="font-size:13px;margin-bottom:6px">Apr 2018 Case Study</div>
@@ -118,63 +164,118 @@ function setStatus(msg){ statusEl.textContent = msg; }
 
 map.on("zoomend", ()=>zoomLabelEl.textContent = String(map.getZoom()));
 zoomLabelEl.textContent = String(map.getZoom());
+/* ------------------------------------------------------------
+   TV banner + Legends
+------------------------------------------------------------ */
+const bannerEl = document.getElementById("banner");
+const legendEl = document.getElementById("legend");
+
+const activeOverlays = new Set();
+let lastOverlayName = "";
+
+function showBanner(text){
+  if (!text){ bannerEl.style.display = "none"; return; }
+  bannerEl.textContent = text;
+  bannerEl.style.display = "block";
+}
+function hideBanner(){ bannerEl.style.display = "none"; }
+
+function showLegend(html){
+  if (!html){ legendEl.style.display = "none"; legendEl.innerHTML = ""; return; }
+  legendEl.innerHTML = html;
+  legendEl.style.display = "block";
+}
+function hideLegend(){ legendEl.style.display = "none"; legendEl.innerHTML = ""; }
+
+function legendTemp(){
+  return `
+    <div class="title">Temperature (°F)</div>
+    <div class="bar" style="background:linear-gradient(90deg, rgb(170,220,255), rgb(120,190,255), rgb(0,70,200), rgb(0,170,0), rgb(255,235,0), rgb(255,140,0), rgb(255,80,0));"></div>
+    <div class="ticks"><span>10</span><span>30</span><span>50</span><span>70+</span></div>
+  `;
+}
+function legendDew(){
+  return `
+    <div class="title">Dew Point (°F)</div>
+    <div class="bar" style="background:linear-gradient(90deg, rgb(90,55,20), rgb(140,95,40), rgb(200,160,110), rgb(190,200,140), rgb(0,170,0), rgb(0,90,0));"></div>
+    <div class="ticks"><span>10</span><span>30</span><span>50</span><span>70</span></div>
+  `;
+}
+function legendWind(){
+  return `
+    <div class="title">Wind (mph)</div>
+    <div class="bar" style="background:linear-gradient(90deg, rgb(0,40,160), rgb(0,120,255), rgb(0,210,180), rgb(255,220,0), rgb(255,120,0), rgb(255,80,0));"></div>
+    <div class="ticks"><span>0</span><span>20</span><span>35</span><span>50+</span></div>
+  `;
+}
+function legendVis(){
+  return `
+    <div class="title">Visibility (mi)</div>
+    <div class="bar" style="background:linear-gradient(90deg, rgba(255,255,255,1), rgba(255,255,255,0.1));"></div>
+    <div class="ticks"><span>0</span><span>2</span><span>5</span><span>10+</span></div>
+    <div class="tiny" style="margin-top:6px">More transparent = better visibility.</div>
+  `;
+}
+function legendPressure(){
+  return `
+    <div class="title">Altimeter Trend (inHg / 3h)</div>
+    <div class="ticks"><span style="background:#ffdcdc;border:1px solid #333;border-radius:6px;padding:2px 6px">Falling</span>
+    <span style="background:#f0f0f0;border:1px solid #333;border-radius:6px;padding:2px 6px">Steady</span>
+    <span style="background:#d7f5d7;border:1px solid #333;border-radius:6px;padding:2px 6px">Rising</span></div>
+  `;
+}
+function legendWx(){
+  return `
+    <div class="title">Present Weather</div>
+    <div class="tiny">Codes from METAR (example: -SN, BLSN, FG). Click stations for details.</div>
+  `;
+}
+function legendAlerts(){
+  return `
+    <div class="title">Alerts</div>
+    <div class="tiny">Colored by hazard type when available. Click polygons for details.</div>
+  `;
+}
+function legendParticles(){
+  return `
+    <div class="title">Daily Wind Particles</div>
+    <div class="tiny">Animated wind field for the selected day.</div>
+  `;
+}
+
+function uiForOverlay(name){
+  const n = (name || "").toLowerCase();
+  if (n.includes("temperature")) return { banner: "Surface Temperatures", legend: legendTemp() };
+  if (n.includes("dew")) return { banner: "Dew Point", legend: legendDew() };
+  if (n.includes("wind speed") || n === "wind speed (mph)") return { banner: "Sustained Wind Speed", legend: legendWind() };
+  if (n.includes("wind arrows")) return { banner: "Wind Direction (Arrows)", legend: legendWind() };
+  if (n.includes("gust")) return { banner: "Wind Gusts", legend: legendWind() };
+  if (n.includes("visibility")) return { banner: "Visibility", legend: legendVis() };
+  if (n.includes("pressure")) return { banner: "Pressure Trend", legend: legendPressure() };
+  if (n.includes("weather codes")) return { banner: "Present Weather", legend: legendWx() };
+  if (n.includes("alerts")) return { banner: "Weather Alerts", legend: legendAlerts() };
+  if (n.includes("particles")) return { banner: "Wind Particles", legend: legendParticles() };
+  return { banner: name, legend: "" };
+}
+
+function refreshUI(){
+  if (!activeOverlays.size){
+    hideBanner(); hideLegend();
+    return;
+  }
+  // Prefer the most recently toggled overlay
+  const name = lastOverlayName || Array.from(activeOverlays).slice(-1)[0];
+  const ui = uiForOverlay(name);
+  showBanner(ui.banner);
+  showLegend(ui.legend);
+}
+
 
 /* ------------------------------------------------------------
    2) Time controls (METAR + Alerts)
 ------------------------------------------------------------ */
-let current = new Date(Date.UTC(2018, 3, 14, 15, 0, 0)); // default (will snap to timeline)
+let current = new Date(Date.UTC(2018, 3, 14, 15, 0, 0)); // 2018-04-14 15Z
 const stepHours = 3;
-
-// Alerts timeline index (optional, but recommended)
-let ALERTS_TIMELINE = null; // array of {t, file, count}
-let ALERTS_MIN = null;
-let ALERTS_MAX = null;
-
-function parseISOZ(s){
-  // '2018-04-12T00:00:00Z' -> Date
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-async function loadAlertsTimelineIndex(){
-  try {
-    const r = await fetch('./timeline_index.json', { cache:'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const idx = await r.json();
-    if (!Array.isArray(idx) || !idx.length) throw new Error('empty index');
-    ALERTS_TIMELINE = idx
-      .map(x => ({...x, _d: parseISOZ(x.t)}))
-      .filter(x => x._d);
-    ALERTS_TIMELINE.sort((a,b)=>a._d-b._d);
-    ALERTS_MIN = ALERTS_TIMELINE[0]._d;
-    ALERTS_MAX = ALERTS_TIMELINE[ALERTS_TIMELINE.length-1]._d;
-  } catch(e){
-    // Not fatal: we'll fall back to the old per-hour filenames
-    console.warn('No timeline_index.json found or unreadable:', e.message);
-    ALERTS_TIMELINE = null;
-    ALERTS_MIN = null;
-    ALERTS_MAX = null;
-  }
-}
-
-function snapCurrentToAlertsTimeline(){
-  if (!ALERTS_TIMELINE || !ALERTS_TIMELINE.length) return null;
-  // clamp
-  if (current < ALERTS_MIN) current = new Date(ALERTS_MIN.getTime());
-  if (current > ALERTS_MAX) current = new Date(ALERTS_MAX.getTime());
-  // nearest
-  let best = ALERTS_TIMELINE[0];
-  let bestDt = Math.abs(current - best._d);
-  for (let i=1;i<ALERTS_TIMELINE.length;i++){
-    const it = ALERTS_TIMELINE[i];
-    const dt = Math.abs(current - it._d);
-    if (dt < bestDt){ best = it; bestDt = dt; }
-  }
-  // snap label/time to the actual frame time to avoid confusing 'out of range' times
-  current = new Date(best._d.getTime());
-  return best;
-}
-
 
 function fmtZ(d){
   const Y = d.getUTCFullYear();
@@ -193,21 +294,13 @@ function toISOZ(d){
 function updateTimeLabel(){ timeLabelEl.textContent = fmtZ(current); }
 updateTimeLabel();
 
-// Try to load alerts timeline index (if present in repo)
-loadAlertsTimelineIndex().then(()=>{
-  snapCurrentToAlertsTimeline();
-  updateTimeLabel();
-});
-
 document.getElementById("backBtn").onclick = async () => {
   current = new Date(current.getTime() - stepHours*3600*1000);
-  snapCurrentToAlertsTimeline();
   updateTimeLabel();
   await refreshAll();
 };
 document.getElementById("fwdBtn").onclick = async () => {
   current = new Date(current.getTime() + stepHours*3600*1000);
-  snapCurrentToAlertsTimeline();
   updateTimeLabel();
   await refreshAll();
 };
@@ -251,22 +344,33 @@ const alertsLayer = L.geoJSON(null);
 const particlesToggle = L.layerGroup();
 let particlesLayer = null;
 
-L.control.layers(
-  { "OpenStreetMap": osm },
-  {
-    "Temperature (°F)": tempLayer,
-    "Dew Point (°F)": dewLayer,
-    "Wind Speed (mph)": windNumLayer,
-    "Wind Arrows": windArrowLayer,
-    "Wind Gusts (mph)": gustLayer,
-    "Visibility (mi)": visLayer,
-    "Pressure (trend)": presLayer,
-    "Weather Codes": wxLayer,
-    "Alerts (WWA)": alertsLayer,
-    "Daily wind particles": particlesToggle
-  },
+const baseLayers = { "OpenStreetMap": osm };
+
+const overlays = {
+  "Temperature (°F)": tempLayer,
+  "Dew Point (°F)": dewLayer,
+  "Wind Speed (mph)": windNumLayer,
+  "Wind Arrows": windArrowLayer,
+  "Wind Gusts (mph)": gustLayer,
+  "Visibility (mi)": visLayer,
+  "Pressure (trend)": presLayer,
+  "Weather Codes": wxLayer,
+  "Alerts (WWA)": alertsLayer,
+  "Daily wind particles": particlesToggle
+};
+
+const layerControl = L.control.layers(
+  baseLayers,
+  overlays,
   { collapsed:false }
 ).addTo(map);
+
+// Map Leaflet layers back to their display names for UI banner/legend
+const layerNameById = new Map();
+Object.entries(overlays).forEach(([name, layer]) => {
+  layerNameById.set(L.Util.stamp(layer), name);
+});
+
 
 /* ------------------------------------------------------------
    5) Collision thinning (drop stations if overlapping)
@@ -534,7 +638,7 @@ function popupHTML(r, dAlt){
 ------------------------------------------------------------ */
 const reportType = 3;
 const SD_ONLY = ["SD_ASOS"];
-const REST = ["MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","IL_ASOS","MI_ASOS"];
+const REST = ["MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","IL_ASOS","MI_ASOS","KS_ASOS","MO_ASOS","OK_ASOS","TX_ASOS"];
 
 function asosURL(d, networks){
   const iso = toISOZ(d);
@@ -570,24 +674,12 @@ async function fetchRows(d, networks){
    10) Alerts styling + LOADER (UPDATED for your new filenames)
 ------------------------------------------------------------ */
 const NWS_EVENT_COLOR = {
-  // Severe / Flood (from NWS Hazards Map colors)
-  "Tornado Warning": "#FF0000",
-  "Severe Thunderstorm Warning": "#FFA500",
-  "Flash Flood Warning": "#8B0000",
-  "Flash Flood Watch": "#2E8B57",
-  "Flood Warning": "#00FF00",
-  "Flood Advisory": "#00FF7F",
-  "Flood Watch": "#2E8B57",
-
-  // Winter
   "Blizzard Warning": "#FF4500",
   "Winter Storm Warning": "#FF69B4",
   "Winter Storm Watch": "#4682B4",
   "Winter Weather Advisory": "#7B68EE",
   "Ice Storm Warning": "#8B008B",
   "Snow Squall Warning": "#C71585",
-
-  // Wind / Other
   "High Wind Warning": "#DAA520",
   "Wind Advisory": "#D2B48C",
   "Dense Fog Advisory": "#708090"
@@ -611,32 +703,10 @@ function eventNameFromProps(p){
   const sig  = pickProp(p, ["significance","sig","SIG"]);
   if (phen && sig){
     const key = `${phen}.${sig}`.toUpperCase();
-    // Common VTEC phenom.sig -> human name
-    const MAP = {
-      'BZ.W':'Blizzard Warning',
-      'WS.W':'Winter Storm Warning',
-      'WS.A':'Winter Storm Watch',
-      'WW.Y':'Winter Weather Advisory',
-      'ZR.Y':'Freezing Rain Advisory',
-      'IS.W':'Ice Storm Warning',
-      'SQ.W':'Snow Squall Warning',
-
-      'TO.W':'Tornado Warning',
-      'TO.A':'Tornado Watch',
-      'SV.W':'Severe Thunderstorm Warning',
-      'SV.A':'Severe Thunderstorm Watch',
-      'FF.W':'Flash Flood Warning',
-      'FF.A':'Flash Flood Watch',
-      'FA.W':'Flood Warning',
-      'FA.Y':'Flood Advisory',
-      'FL.W':'Flood Warning',
-      'FL.Y':'Flood Advisory',
-
-      'MA.W':'Marine Warning',
-      'GL.W':'Gale Warning',
-      'SR.W':'Storm Warning'
-    };
-    if (MAP[key]) return MAP[key];
+    if (key === "BZ.W") return "Blizzard Warning";
+    if (key === "WS.W") return "Winter Storm Warning";
+    if (key === "WS.A") return "Winter Storm Watch";
+    if (key === "WW.Y") return "Winter Weather Advisory";
     return key;
   }
 
@@ -651,17 +721,8 @@ function colorForAlertName(name){
   if (lower.includes("blizzard") && lower.includes("warning")) return NWS_EVENT_COLOR["Blizzard Warning"];
   if (lower.includes("winter storm") && lower.includes("warning")) return NWS_EVENT_COLOR["Winter Storm Warning"];
   if (lower.includes("winter storm") && lower.includes("watch")) return NWS_EVENT_COLOR["Winter Storm Watch"];
-  if (lower.includes('winter weather') && lower.includes('advisory')) return NWS_EVENT_COLOR['Winter Weather Advisory'];
-  if (lower.includes('tornado') && lower.includes('warning')) return NWS_EVENT_COLOR['Tornado Warning'];
-  if (lower.includes('tornado') && lower.includes('watch')) return NWS_EVENT_COLOR['Tornado Watch'];
-  if (lower.includes('severe thunderstorm') && lower.includes('warning')) return NWS_EVENT_COLOR['Severe Thunderstorm Warning'];
-  if (lower.includes('severe thunderstorm') && lower.includes('watch')) return NWS_EVENT_COLOR['Severe Thunderstorm Watch'];
-  if (lower.includes('flash flood') && lower.includes('warning')) return NWS_EVENT_COLOR['Flash Flood Warning'];
-  if (lower.includes('flash flood') && lower.includes('watch')) return NWS_EVENT_COLOR['Flash Flood Watch'];
-  if (lower == 'flood warning') return NWS_EVENT_COLOR['Flood Warning'];
-  if (lower == 'flood advisory') return NWS_EVENT_COLOR['Flood Advisory'];
-  return '#CC0000'; // fallback
-
+  if (lower.includes("winter weather") && lower.includes("advisory")) return NWS_EVENT_COLOR["Winter Weather Advisory"];
+  return "#CC0000"; // fallback (what you were seeing)
 }
 
 // NEW (your repo): alerts_20180414_0000Z.geojson
@@ -709,27 +770,18 @@ async function fetchFirstOk(urls){
 async function loadAlerts(){
   if (!map.hasLayer(alertsLayer)) return;
 
-  // If you have a timeline_index.json + timeline_hourly/*.geojson, use it.
-  const snapped = snapCurrentToAlertsTimeline();
-
-  let candidates = [];
-  if (snapped && snapped.file){
-    candidates = [ './' + snapped.file.replace(/^\.\//, '') ];
-  } else {
-    // Backward compatibility: try legacy naming patterns
-    candidates = [
-      alertsFileCompactHourly(current),
-      alertsFileOldDash(current),
-      alertsFileOldWithMinutes(current)
-    ];
-  }
+  // Prefer your new hourly timeline files, but keep backward compatibility
+  const candidates = [
+    alertsFileCompactHourly(current),
+    alertsFileOldDash(current),
+    alertsFileOldWithMinutes(current)
+  ];
 
   try{
     const { url, gj } = await fetchFirstOk(candidates);
 
     alertsLayer.clearLayers();
 
-    let polyCount = 0;
     L.geoJSON(gj, {
       style: (feat) => {
         const p = feat.properties || {};
@@ -738,36 +790,41 @@ async function loadAlerts(){
         return { weight:2, color:c, fillColor:c, fillOpacity:0.18 };
       },
       onEachFeature: (feat, layer) => {
-        polyCount++;
         const p = feat.properties || {};
         const name = eventNameFromProps(p);
         const c = colorForAlertName(name);
 
-        const wfo = pickProp(p, ['WFO','wfo']);
-        const etn = pickProp(p, ['ETN','etn']);
-        const status = pickProp(p, ['STATUS','status']);
-        const issued = pickProp(p, ['issuance','issued','onset','ISSUANCE','ISSUED','ISSUE']);
-        const expire = pickProp(p, ['expire','expires','end','EXPIRE','EXPIRES']);
+        const wfo = pickProp(p, ["WFO","wfo"]);
+        const etn = pickProp(p, ["ETN","etn"]);
+        const status = pickProp(p, ["STATUS","status"]);
+        const issued = pickProp(p, ["issuance","issued","onset","ISSUANCE","ISSUED"]);
+        const expire = pickProp(p, ["expire","expires","end","EXPIRE","EXPIRES"]);
 
         const lines = [];
         lines.push(`<div><span class="swatch" style="background:${c}"></span><b>${name}</b></div>`);
-        if (wfo || etn) lines.push(`Office/Event: <b>${wfo || '—'}</b> / <b>${etn || '—'}</b>`);
+        if (wfo || etn) lines.push(`Office/Event: <b>${wfo || "—"}</b> / <b>${etn || "—"}</b>`);
         if (status) lines.push(`Status: <b>${status}</b>`);
         if (issued) lines.push(`Issued: <b>${issued}</b>`);
         if (expire) lines.push(`Expires: <b>${expire}</b>`);
 
-        layer.bindPopup(lines.join('<br>'));
+        const hasHazard = !!pickProp(p, ["event","phenomena","phenom","PHENOM","significance","sig","SIG"]);
+        if (!hasHazard){
+          lines.push(`<div style="margin-top:6px;opacity:.75">
+            Note: this alert file doesn’t include hazard type (Blizzard/WSW/etc), so colors may be limited.
+          </div>`);
+        }
+
+        layer.bindPopup(lines.join("<br>"));
       }
     }).eachLayer(l => alertsLayer.addLayer(l));
 
-    // Confirm which file loaded + how many polygons
-    const short = url.replace('./','');
-    setStatus(`Alerts loaded: ${short} | polygons: ${polyCount}`);
+    // Small status breadcrumb to confirm which file actually loaded
+    setStatus(`Alerts loaded: ${url.replace("./","")}`);
 
   } catch(e){
-    console.warn('Alerts load failed:', e.message);
+    console.warn("Alerts load failed:", e.message);
     alertsLayer.clearLayers();
-    setStatus('Alerts not found for this hour (check filenames).');
+    setStatus("Alerts not found for this hour (check filenames).");
   }
 }
 
@@ -834,10 +891,30 @@ async function refreshParticlesIfOn(){
 
 /* Toggle handlers for particles + alerts */
 map.on("overlayadd", async (e) => {
+  const name = layerNameById.get(L.Util.stamp(e.layer)) || "";
+  if (name){
+    activeOverlays.add(name);
+    lastOverlayName = name;
+    refreshUI();
+  }
+
+  // Existing behaviors
   if (e.layer === particlesToggle) await refreshParticlesIfOn();
   if (e.layer === alertsLayer) await loadAlerts();
 });
+
 map.on("overlayremove", (e) => {
+  const name = layerNameById.get(L.Util.stamp(e.layer)) || "";
+  if (name){
+    activeOverlays.delete(name);
+    // if the removed overlay was the last active one, pick another (if any)
+    if (lastOverlayName === name){
+      lastOverlayName = Array.from(activeOverlays).slice(-1)[0] || "";
+    }
+    refreshUI();
+  }
+
+  // Existing behavior: remove velocity layer
   if (e.layer === particlesToggle && particlesLayer){
     map.removeLayer(particlesLayer);
     particlesLayer = null;
