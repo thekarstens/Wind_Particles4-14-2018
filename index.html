@@ -100,18 +100,23 @@
     opacity:0.85;
   }
 
-  /* Branding logo (top-right corner) */
+  /* Branding logo (bottom-right, small) */
   #brandLogo{
     position:absolute;
-    top:10px;
-    right:12px;
+    bottom:10px;
+    right:10px;
+    top:auto;
+    left:auto;
     z-index:100000;
-    width:210px;
+    width:120px;
+    max-width:22vw;
     height:auto;
     display:none;
-    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.25));
+    opacity:0.95;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
     pointer-events:none;
   }
+
 
 </style>
 </head>
@@ -132,12 +137,6 @@
     <button class="btn" id="backBtn">◀ Time</button>
     <div class="mono" id="timeLabel">2018-04-14 15Z</div>
     <button class="btn" id="fwdBtn">Time ▶</button>
-  </div>
-
-  <!-- Simple surface analysis access (opens IEM Time Machine in a new tab) -->
-  <div class="row">
-    <button class="btn" id="surfaceBtn">Surface Analysis (open)</button>
-    <span class="tiny" style="opacity:.7">(opens archive)</span>
   </div>
 
   <!-- Day controls for PARTICLES ONLY -->
@@ -174,6 +173,37 @@ const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: "© OpenStreetMap contributors"
 }).addTo(map);
+
+// Surface analysis overlay (WPC archive image) as a toggleable layer
+// URL pattern seen on WPC archive: /archives/sfc/YYYY/namussfcYYYYMMDDHH.gif
+// We clamp to 3-hour increments (00/03/06/...)
+let surfaceLayer = null;
+const SURFACE_BOUNDS = L.latLngBounds([22.0, -130.0], [55.0, -60.0]);
+function surfaceUrl(dt){
+  const d = new Date(dt.getTime());
+  const hr = d.getUTCHours();
+  const hr3 = Math.round(hr / 3) * 3;
+  d.setUTCHours((hr3+24)%24, 0, 0, 0);
+  // if rounding pushed hour to 24, bump day
+  if (hr3 >= 24){
+    d.setUTCDate(d.getUTCDate()+1);
+    d.setUTCHours(0);
+  }
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth()+1).padStart(2,'0');
+  const dd = String(d.getUTCDate()).padStart(2,'0');
+  const hh = String(d.getUTCHours()).padStart(2,'0');
+  return `https://www.wpc.ncep.noaa.gov/archives/sfc/${y}/namussfc${y}${m}${dd}${hh}.gif`;
+}
+function ensureSurfaceLayer(){
+  if (surfaceLayer) return;
+  surfaceLayer = L.imageOverlay(surfaceUrl(current), SURFACE_BOUNDS, {opacity:0.85, interactive:false});
+}
+function updateSurfaceLayer(){
+  if (!surfaceLayer) return;
+  surfaceLayer.setUrl(surfaceUrl(current));
+}
+
 
 map.attributionControl.setPrefix(false);
 
@@ -372,10 +402,6 @@ document.getElementById("fwdBtn").onclick = async () => {
 
 // Surface analysis (simple): opens WPC Surface Analysis Archive.
 // (We can later auto-load specific timestamp images once you pick which variant you want.)
-document.getElementById("surfaceBtn").onclick = () => {
-  window.open("https://www.wpc.ncep.noaa.gov/archives/web_pages/sfc/sfc_archive.php", "_blank");
-};
-
 /* ------------------------------------------------------------
    3) Day controls (Particles only: Apr 13/14/15)
 ------------------------------------------------------------ */
@@ -458,7 +484,7 @@ function updateHRRRLayers(){
 const particlesToggle = L.layerGroup();
 let particlesLayer = null;
 
-const baseLayers = { "OpenStreetMap": osm };
+const baseLayers = {}; // keep OSM as the only base layer (no base selector in the control)
 
 // IMPORTANT: HRRR tile layers must be constructed BEFORE adding to the layer control.
 // Otherwise Leaflet will receive null layers and crash when it tries to call setZIndex().
@@ -474,6 +500,7 @@ const overlays = {
   "Pressure (trend)": presLayer,
   "Weather Codes": wxLayer,
   "Alerts (WWA)": alertsLayer,
+  "Surface Analysis (WPC)": (ensureSurfaceLayer(), surfaceLayer),
   "Radar (HRRR REFD)": hrrrRefdLayer,
   "Precip Type (HRRR REFP)": hrrrRefpLayer,
   "Daily wind particles": particlesToggle
@@ -759,7 +786,7 @@ function popupHTML(r, dAlt){
 ------------------------------------------------------------ */
 const reportType = 3;
 const SD_ONLY = ["SD_ASOS"];
-const REST = ["MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","IL_ASOS","MI_ASOS","KS_ASOS","MO_ASOS","OK_ASOS","TX_ASOS"];
+const REST = ["MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","KS_ASOS","MO_ASOS"];
 
 function asosURL(d, networks){
   const iso = toISOZ(d);
@@ -1049,7 +1076,8 @@ map.on("overlayadd", async (e) => {
   // Existing behaviors
   if (e.layer === particlesToggle) await refreshParticlesIfOn();
   if (e.layer === alertsLayer) await loadAlerts();
-  if (e.layer === hrrrRefdLayer || e.layer === hrrrRefpLayer) { updateHRRRLayers(); }
+  if (e.layer === hrrrRefdLayer || e.layer === hrrrRefpLayer) { updateHRRRLayers();
+  updateSurfaceLayer(); }
 });
 
 map.on("overlayremove", (e) => {
@@ -1186,6 +1214,7 @@ async function refreshAll(){
   setStatus(`Stations shown: ${shown}/${total} (minSep ${minSep}px).`);
 
   updateHRRRLayers();
+  updateSurfaceLayer();
   await loadAlerts();
 }
 
