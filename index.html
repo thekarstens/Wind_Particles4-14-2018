@@ -508,8 +508,10 @@ async function fetchRows(d, networks){
 }
 
 /* ------------------------------------------------------------
-   10) Alerts styling + LOADER (UPDATED for your new filenames)
+   10) Alerts styling + LOADER (timeline_index.json + timeline_hourly/)
 ------------------------------------------------------------ */
+
+// Event-name (or VTEC-derived) -> color (approx NWS standard palette)
 const NWS_EVENT_COLOR = {
   "Blizzard Warning": "#FF4500",
   "Winter Storm Warning": "#FF69B4",
@@ -519,7 +521,26 @@ const NWS_EVENT_COLOR = {
   "Snow Squall Warning": "#C71585",
   "High Wind Warning": "#DAA520",
   "Wind Advisory": "#D2B48C",
-  "Dense Fog Advisory": "#708090"
+  "Dense Fog Advisory": "#708090",
+  "Flood Warning": "#00FF00",
+  "Flash Flood Warning": "#FF0000",
+  "Lakeshore Flood Warning": "#228B22"
+};
+
+// VTEC (PHENOM.SIG) -> event name
+const VTEC_TO_EVENT = {
+  "BZ.W": "Blizzard Warning",
+  "WS.W": "Winter Storm Warning",
+  "WS.A": "Winter Storm Watch",
+  "WW.Y": "Winter Weather Advisory",
+  "IS.W": "Ice Storm Warning",
+  "SQ.W": "Snow Squall Warning",
+  "HW.W": "High Wind Warning",
+  "WI.Y": "Wind Advisory",
+  "FG.Y": "Dense Fog Advisory",
+  "FL.W": "Flood Warning",
+  "FF.W": "Flash Flood Warning",
+  "LS.W": "Lakeshore Flood Warning"
 };
 
 function pickProp(p, keys){
@@ -533,20 +554,19 @@ function pickProp(p, keys){
 }
 
 function eventNameFromProps(p){
+  // Some exports include full event names already
   const e = pickProp(p, ["event","headline","name","title"]);
   if (e) return e;
 
-  const phen = pickProp(p, ["phenomena","phenom","PHENOM","phen"]);
-  const sig  = pickProp(p, ["significance","sig","SIG"]);
+  // IEM watchwarn export uses PHENOM + SIG
+  const phen = pickProp(p, ["PHENOM","phenom","phenomena","phen"]);
+  const sig  = pickProp(p, ["SIG","sig","significance"]);
   if (phen && sig){
     const key = `${phen}.${sig}`.toUpperCase();
-    if (key === "BZ.W") return "Blizzard Warning";
-    if (key === "WS.W") return "Winter Storm Warning";
-    if (key === "WS.A") return "Winter Storm Watch";
-    if (key === "WW.Y") return "Winter Weather Advisory";
-    return key;
+    return VTEC_TO_EVENT[key] || key;
   }
 
+  // Last resort
   const wfo = pickProp(p, ["WFO","wfo"]);
   const etn = pickProp(p, ["ETN","etn"]);
   return (wfo || etn) ? `Alert ${wfo || ""} ${etn || ""}`.trim() : "Alert";
@@ -559,72 +579,88 @@ function colorForAlertName(name){
   if (lower.includes("winter storm") && lower.includes("warning")) return NWS_EVENT_COLOR["Winter Storm Warning"];
   if (lower.includes("winter storm") && lower.includes("watch")) return NWS_EVENT_COLOR["Winter Storm Watch"];
   if (lower.includes("winter weather") && lower.includes("advisory")) return NWS_EVENT_COLOR["Winter Weather Advisory"];
-  return "#CC0000"; // fallback (what you were seeing)
+  if (lower.includes("wind") && lower.includes("advisory")) return NWS_EVENT_COLOR["Wind Advisory"];
+  if (lower.includes("high wind") && lower.includes("warning")) return NWS_EVENT_COLOR["High Wind Warning"];
+  if (lower.includes("fog") && lower.includes("advisory")) return NWS_EVENT_COLOR["Dense Fog Advisory"];
+  if (lower.includes("flash flood") && lower.includes("warning")) return NWS_EVENT_COLOR["Flash Flood Warning"];
+  if (lower.includes("flood") && lower.includes("warning")) return NWS_EVENT_COLOR["Flood Warning"];
+  return "#CC0000";
 }
 
-// NEW (your repo): alerts_20180414_0000Z.geojson
-function alertsFileCompactHourly(d){
+// ---- Timeline index support ----
+let ALERTS_INDEX = null; // array of {t, file, count}
+let ALERTS_MAP = null;   // Map(isoTime -> file)
+
+async function loadAlertsIndexOnce(){
+  if (ALERTS_INDEX) return;
+  const r = await fetch("./timeline_index.json", { cache: "no-store" });
+  if (!r.ok) throw new Error(`timeline_index.json HTTP ${r.status}`);
+  ALERTS_INDEX = await r.json();
+  ALERTS_MAP = new Map(ALERTS_INDEX.map(x => [String(x.t), String(x.file)]));
+}
+
+function hourISOZ(d){
+  // Snap to hour and format like 2018-04-14T12:00:00Z
   const Y = d.getUTCFullYear();
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
   const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./alerts_${Y}${M}${D}_${H}00Z.geojson`;
+  return `${Y}-${M}-${D}T${H}:00:00Z`;
 }
 
-// OLD (your repo): alerts_2018-04-14T21Z.geojson
-function alertsFileOldDash(d){
-  const Y = d.getUTCFullYear();
-  const M = String(d.getUTCMonth()+1).padStart(2,"0");
-  const D = String(d.getUTCDate()).padStart(2,"0");
-  const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./alerts_${Y}-${M}-${D}T${H}Z.geojson`;
-}
-
-// Extra fallback (sometimes people store T2100Z)
-function alertsFileOldWithMinutes(d){
-  const Y = d.getUTCFullYear();
-  const M = String(d.getUTCMonth()+1).padStart(2,"0");
-  const D = String(d.getUTCDate()).padStart(2,"0");
-  const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./alerts_${Y}-${M}-${D}T${H}00Z.geojson`;
-}
-
-async function fetchFirstOk(urls){
-  let lastErr = "";
-  for (const u of urls){
-    try{
-      const r = await fetch(u, { cache:"no-store" });
-      if (!r.ok) { lastErr = `HTTP ${r.status}`; continue; }
-      const gj = await r.json();
-      return { url: u, gj };
-    } catch(e){
-      lastErr = e.message || String(e);
-    }
+function nearestTimelineFile(iso){
+  if (ALERTS_MAP && ALERTS_MAP.has(iso)) return ALERTS_MAP.get(iso);
+  const target = Date.parse(iso);
+  if (!Number.isFinite(target) || !ALERTS_INDEX || !ALERTS_INDEX.length) return "";
+  let best = ALERTS_INDEX[0];
+  let bestDt = Math.abs(Date.parse(best.t) - target);
+  for (let i=1;i<ALERTS_INDEX.length;i++){
+    const dt = Math.abs(Date.parse(ALERTS_INDEX[i].t) - target);
+    if (dt < bestDt){ best = ALERTS_INDEX[i]; bestDt = dt; }
   }
-  throw new Error(lastErr || "No alert file matched");
+  return best ? String(best.file) : "";
 }
 
 async function loadAlerts(){
   if (!map.hasLayer(alertsLayer)) return;
 
-  // Prefer your new hourly timeline files, but keep backward compatibility
-  const candidates = [
-    alertsFileCompactHourly(current),
-    alertsFileOldDash(current),
-    alertsFileOldWithMinutes(current)
-  ];
-
   try{
-    const { url, gj } = await fetchFirstOk(candidates);
+    await loadAlertsIndexOnce();
+
+    const iso = hourISOZ(current);
+    const relPath = nearestTimelineFile(iso);
+    if (!relPath){
+      alertsLayer.clearLayers();
+      setStatus("Alerts: no frame for this hour");
+      return;
+    }
+
+    const url = "./" + relPath.replace(/^\.?\//, "");
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`Alerts HTTP ${r.status}`);
+    const gj = await r.json();
 
     alertsLayer.clearLayers();
 
+    // Draw with style + popups
     L.geoJSON(gj, {
       style: (feat) => {
         const p = feat.properties || {};
         const name = eventNameFromProps(p);
         const c = colorForAlertName(name);
-        return { weight:2, color:c, fillColor:c, fillOpacity:0.18 };
+
+        // Use STATUS for subtle styling, but don't hide anything
+        const status = pickProp(p, ["STATUS","status"]).toUpperCase();
+        const isExpired = status === "EXP";
+        const isCanceled = status === "CAN";
+
+        return {
+          weight: isCanceled ? 1 : 2,
+          dashArray: isCanceled ? "6,4" : null,
+          color: c,
+          fillColor: c,
+          fillOpacity: isExpired ? 0.06 : isCanceled ? 0.08 : 0.18
+        };
       },
       onEachFeature: (feat, layer) => {
         const p = feat.properties || {};
@@ -634,37 +670,36 @@ async function loadAlerts(){
         const wfo = pickProp(p, ["WFO","wfo"]);
         const etn = pickProp(p, ["ETN","etn"]);
         const status = pickProp(p, ["STATUS","status"]);
-        const issued = pickProp(p, ["issuance","issued","onset","ISSUANCE","ISSUED"]);
-        const expire = pickProp(p, ["expire","expires","end","EXPIRE","EXPIRES"]);
+        const ugc = pickProp(p, ["NWS_UGC","ugc","UGC"]);
+        const beg = pickProp(p, ["POLY_BEG","poly_beg","begin"]);
+        const end = pickProp(p, ["POLY_END","poly_end","end"]);
+        const phen = pickProp(p, ["PHENOM","phenom"]);
+        const sig  = pickProp(p, ["SIG","sig"]);
 
         const lines = [];
         lines.push(`<div><span class="swatch" style="background:${c}"></span><b>${name}</b></div>`);
-        if (wfo || etn) lines.push(`Office/Event: <b>${wfo || "—"}</b> / <b>${etn || "—"}</b>`);
+        if (phen && sig) lines.push(`VTEC: <b>${String(phen).toUpperCase()}.${String(sig).toUpperCase()}</b>`);
+        if (wfo || etn) lines.push(`WFO/ETN: <b>${wfo || "—"}</b> / <b>${etn || "—"}</b>`);
         if (status) lines.push(`Status: <b>${status}</b>`);
-        if (issued) lines.push(`Issued: <b>${issued}</b>`);
-        if (expire) lines.push(`Expires: <b>${expire}</b>`);
-
-        const hasHazard = !!pickProp(p, ["event","phenomena","phenom","PHENOM","significance","sig","SIG"]);
-        if (!hasHazard){
-          lines.push(`<div style="margin-top:6px;opacity:.75">
-            Note: this alert file doesn’t include hazard type (Blizzard/WSW/etc), so colors may be limited.
-          </div>`);
-        }
+        if (ugc) lines.push(`UGC: <b>${ugc}</b>`);
+        if (beg) lines.push(`Beg: <b>${beg}</b>`);
+        if (end) lines.push(`End: <b>${end}</b>`);
 
         layer.bindPopup(lines.join("<br>"));
       }
     }).eachLayer(l => alertsLayer.addLayer(l));
 
-    // Small status breadcrumb to confirm which file actually loaded
-    setStatus(`Alerts loaded: ${url.replace("./","")}`);
+    // Show breadcrumb with file + count if present in index
+    const entry = (ALERTS_INDEX || []).find(x => String(x.file) === String(relPath));
+    const cnt = entry && entry.count != null ? entry.count : (gj.features ? gj.features.length : "?");
+    setStatus(`Alerts loaded: ${relPath} | polygons: ${cnt}`);
 
   } catch(e){
     console.warn("Alerts load failed:", e.message);
     alertsLayer.clearLayers();
-    setStatus("Alerts not found for this hour (check filenames).");
+    setStatus("Alerts load failed (check timeline_index.json + paths)");
   }
 }
-
 /* ------------------------------------------------------------
    11) Daily particles (toggle + day buttons)
 ------------------------------------------------------------ */
