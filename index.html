@@ -243,6 +243,26 @@ function legendParticles(){
   `;
 }
 
+
+
+function legendRadar(){
+  return `
+    <div class="title">Radar (HRRR REFD)</div>
+    <div class="row"><span class="swatch" style="background:#000"></span>Light</div>
+    <div class="row"><span class="swatch" style="background:#fff"></span>Heavy</div>
+    <div class="small">HRRR model reflectivity at the current hour.</div>
+  `;
+}
+function legendPtype(){
+  return `
+    <div class="title">Precip Type (HRRR REFP)</div>
+    <div class="row"><span class="swatch" style="background:#00a000"></span>Rain</div>
+    <div class="row"><span class="swatch" style="background:#ff4fd8"></span>Freezing rain / ice</div>
+    <div class="row"><span class="swatch" style="background:#3a7bff"></span>Snow</div>
+    <div class="small">HRRR precip type layer (colors depend on HRRR palette).</div>
+  `;
+}
+
 function uiForOverlay(name){
   const n = (name || "").toLowerCase();
   if (n.includes("temperature")) return { banner: "Surface Temperatures", legend: legendTemp() };
@@ -254,6 +274,8 @@ function uiForOverlay(name){
   if (n.includes("pressure")) return { banner: "Pressure Trend", legend: legendPressure() };
   if (n.includes("weather codes")) return { banner: "Present Weather", legend: legendWx() };
   if (n.includes("alerts")) return { banner: "Weather Alerts", legend: legendAlerts() };
+  if (n.includes("radar")) return { banner: "RADAR (HRRR)", legend: legendRadar() };
+  if (n.includes("precip type") || n.includes("refp")) return { banner: "PRECIPITATION TYPE (HRRR)", legend: legendPtype() };
   if (n.includes("particles")) return { banner: "Wind Particles", legend: legendParticles() };
   return { banner: name, legend: "" };
 }
@@ -338,7 +360,43 @@ const presLayer = L.layerGroup();
 const wxLayer   = L.layerGroup();
 
 // Alerts
-const alertsLayer = L.geoJSON(null);
+const alertsLayer = L.geoJSON(null).addTo(map);
+// HRRR Radar + Precip Type (Tile layers updated as the timeline changes)
+// Uses IEM HRRR TMS naming: hrrr::REFD-F0000-YYYYMMDDHHMI and hrrr::REFP-F0000-YYYYMMDDHHMI citeturn0search1
+let hrrrRefdLayer = null;
+let hrrrRefpLayer = null;
+
+function fmtInitUTC(d){
+  // HRRR init time string YYYYMMDDHH00 (minutes set to 00)
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `${Y}${M}${D}${H}00`;
+}
+
+function hrrrUrl(product, initUTC, fmin="0000"){
+  const layerName = `hrrr::${product}-F${String(fmin).padStart(4,"0")}-${initUTC}`;
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${layerName}/{z}/{x}/{y}.png`;
+}
+
+function ensureHRRRLayers(){
+  if (!hrrrRefdLayer){
+    hrrrRefdLayer = L.tileLayer(hrrrUrl("REFD", fmtInitUTC(current)), { opacity: 0.70, updateWhenIdle:true, updateWhenZooming:false });
+  }
+  if (!hrrrRefpLayer){
+    hrrrRefpLayer = L.tileLayer(hrrrUrl("REFP", fmtInitUTC(current)), { opacity: 0.70, updateWhenIdle:true, updateWhenZooming:false });
+  }
+}
+
+function updateHRRRLayers(){
+  // Only update if the layer is currently toggled on (saves tile requests)
+  ensureHRRRLayers();
+  const initUTC = fmtInitUTC(current);
+  if (map.hasLayer(hrrrRefdLayer)) hrrrRefdLayer.setUrl(hrrrUrl("REFD", initUTC));
+  if (map.hasLayer(hrrrRefpLayer)) hrrrRefpLayer.setUrl(hrrrUrl("REFP", initUTC));
+}
+
 
 // Particles: placeholder for checkbox + actual velocity layer
 const particlesToggle = L.layerGroup();
@@ -356,6 +414,8 @@ const overlays = {
   "Pressure (trend)": presLayer,
   "Weather Codes": wxLayer,
   "Alerts (WWA)": alertsLayer,
+  "Radar (HRRR REFD)": hrrrRefdLayer,
+  "Precip Type (HRRR REFP)": hrrrRefpLayer,
   "Daily wind particles": particlesToggle
 };
 
@@ -364,6 +424,7 @@ const layerControl = L.control.layers(
   overlays,
   { collapsed:false }
 ).addTo(map);
+
 
 // Map Leaflet layers back to their display names for UI banner/legend
 const layerNameById = new Map();
