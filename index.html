@@ -100,11 +100,26 @@
     opacity:0.85;
   }
 
+
+#brandLogo{
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 220px;
+  max-width: 35vw;
+  height: auto;
+  z-index: 800; /* above map, below popups */
+  opacity: 0.95;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+}
+
 </style>
 </head>
 
 <body>
 <div id="map"></div>
+  <img id="brandLogo" src="logo.png" alt="Weather Workshops">
 <div id="banner" class="tvbanner"></div>
 <div id="legend" class="legend"></div>
 
@@ -133,6 +148,11 @@
     <span class="mono" id="zoomLabel">6</span>
   </div>
 
+  <div class="row" style="gap:8px">
+    <button class="btn" id="surfaceBtn" title="Open WPC surface analysis archive in a new tab">Surface Analysis (WPC)</button>
+    <button class="btn" id="radarBtn" title="Future: composite radar layer" disabled>Radar (coming)</button>
+  </div>
+
   <div class="row">
     <span class="tiny" id="status">Loading…</span>
   </div>
@@ -147,6 +167,13 @@
    1) Map
 ------------------------------------------------------------ */
 const map = L.map("map", { zoomControl:true }).setView([44.2, -96.5], 6);
+
+
+// Simple surface analysis link (no tiles yet)
+// WPC surface analysis archive: https://www.wpc.ncep.noaa.gov/archives/web_pages/sfc/sfc_archive_maps.php
+document.getElementById('surfaceBtn').onclick = () => {
+  window.open('https://www.wpc.ncep.noaa.gov/archives/web_pages/sfc/sfc_archive_maps.php', '_blank', 'noopener');
+};
 
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
@@ -366,6 +393,35 @@ const alertsLayer = L.geoJSON(null).addTo(map);
 let hrrrRefdLayer = null;
 let hrrrRefpLayer = null;
 
+// IEM provides multiple DNS aliases to spread tile load (helps reduce 503s) — see OGC notes. citeturn1search0
+const MESONET_HOSTS = [
+  "https://mesonet1.agron.iastate.edu",
+  "https://mesonet2.agron.iastate.edu",
+  "https://mesonet3.agron.iastate.edu",
+  "https://www.mesonet.agron.iastate.edu"
+];
+let mesonetHostIdx = 0;
+function mesonetBase(){
+  return MESONET_HOSTS[mesonetHostIdx % MESONET_HOSTS.length];
+}
+function bumpIemHost(){
+  mesonetHostIdx = (mesonetHostIdx + 1) % MESONET_HOSTS.length;
+}
+
+
+// IEM tile servers: you can swap hosts if you hit intermittent 503s.
+// The IEM docs note alternate hostnames (mesonet1..mesonet4) can be used for load distribution.
+const IEM_TILE_HOSTS = [
+  "https://mesonet.agron.iastate.edu",
+  "https://mesonet1.agron.iastate.edu",
+  "https://mesonet2.agron.iastate.edu",
+  "https://mesonet3.agron.iastate.edu",
+  "https://mesonet4.agron.iastate.edu"
+];
+let iemHostIndex = 0;
+function iemHost(){ return IEM_TILE_HOSTS[iemHostIndex % IEM_TILE_HOSTS.length]; }
+function bumpIemHost(){ iemHostIndex = (iemHostIndex + 1) % IEM_TILE_HOSTS.length; }
+
 function fmtInitUTC(d){
   // HRRR init time string YYYYMMDDHH00 (minutes set to 00)
   const Y = d.getUTCFullYear();
@@ -377,15 +433,34 @@ function fmtInitUTC(d){
 
 function hrrrUrl(product, initUTC, fmin="0000"){
   const layerName = `hrrr::${product}-F${String(fmin).padStart(4,"0")}-${initUTC}`;
-  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${layerName}/{z}/{x}/{y}.png`;
+  return `${iemHost()}/cache/tile.py/1.0.0/${layerName}/{z}/{x}/{y}.png`;
 }
 
 function ensureHRRRLayers(){
+  const init = fmtInitUTC(current);
   if (!hrrrRefdLayer){
-    hrrrRefdLayer = L.tileLayer(hrrrUrl("REFD", fmtInitUTC(current)), { opacity: 0.70, updateWhenIdle:true, updateWhenZooming:false });
+    hrrrRefdLayer = L.tileLayer(hrrrUrl("REFD", init), { opacity: 0.70, updateWhenIdle:true, updateWhenZooming:false });
+    hrrrRefdLayer._iemBound = false;
   }
   if (!hrrrRefpLayer){
-    hrrrRefpLayer = L.tileLayer(hrrrUrl("REFP", fmtInitUTC(current)), { opacity: 0.70, updateWhenIdle:true, updateWhenZooming:false });
+    hrrrRefpLayer = L.tileLayer(hrrrUrl("REFP", init), { opacity: 0.70, updateWhenIdle:true, updateWhenZooming:false });
+    hrrrRefpLayer._iemBound = false;
+  }
+
+  // Bind tileerror handlers once (helps when IEM returns intermittent 503)
+  if (!hrrrRefdLayer._iemBound){
+    hrrrRefdLayer.on('tileerror', () => {
+      bumpIemHost();
+      hrrrRefdLayer.setUrl(hrrrUrl('REFD', fmtInitUTC(current)));
+    });
+    hrrrRefdLayer._iemBound = true;
+  }
+  if (!hrrrRefpLayer._iemBound){
+    hrrrRefpLayer.on('tileerror', () => {
+      bumpIemHost();
+      hrrrRefpLayer.setUrl(hrrrUrl('REFP', fmtInitUTC(current)));
+    });
+    hrrrRefpLayer._iemBound = true;
   }
 }
 
@@ -739,12 +814,23 @@ async function fetchRows(d, networks){
    10) Alerts styling + LOADER (UPDATED for your new filenames)
 ------------------------------------------------------------ */
 const NWS_EVENT_COLOR = {
+  // Severe / hydro
+  "Tornado Warning": "#FF0000",
+  "Severe Thunderstorm Warning": "#FFD700",
+  "Flash Flood Warning": "#00FF00",
+  "Flood Warning": "#00AA00",
+  "Tornado Watch": "#FF00FF",
+  "Severe Thunderstorm Watch": "#DB7093",
+
+  // Winter
   "Blizzard Warning": "#FF4500",
   "Winter Storm Warning": "#FF69B4",
   "Winter Storm Watch": "#4682B4",
   "Winter Weather Advisory": "#7B68EE",
   "Ice Storm Warning": "#8B008B",
   "Snow Squall Warning": "#C71585",
+
+  // Wind / visibility
   "High Wind Warning": "#DAA520",
   "Wind Advisory": "#D2B48C",
   "Dense Fog Advisory": "#708090"
@@ -768,10 +854,23 @@ function eventNameFromProps(p){
   const sig  = pickProp(p, ["significance","sig","SIG"]);
   if (phen && sig){
     const key = `${phen}.${sig}`.toUpperCase();
+
+    // Severe / hydro
+    if (key === "TO.W") return "Tornado Warning";
+    if (key === "SV.W") return "Severe Thunderstorm Warning";
+    if (key === "FF.W") return "Flash Flood Warning";
+    if (key === "FL.W") return "Flood Warning";
+    if (key === "TO.A") return "Tornado Watch";
+    if (key === "SV.A") return "Severe Thunderstorm Watch";
+
+    // Winter
     if (key === "BZ.W") return "Blizzard Warning";
     if (key === "WS.W") return "Winter Storm Warning";
     if (key === "WS.A") return "Winter Storm Watch";
     if (key === "WW.Y") return "Winter Weather Advisory";
+    if (key === "IS.W") return "Ice Storm Warning";
+    if (key === "SQ.W") return "Snow Squall Warning";
+
     return key;
   }
 
@@ -782,12 +881,25 @@ function eventNameFromProps(p){
 
 function colorForAlertName(name){
   if (NWS_EVENT_COLOR[name]) return NWS_EVENT_COLOR[name];
+
   const lower = String(name).toLowerCase();
+
+  // Severe / hydro (wordy fallbacks)
+  if (lower.includes("tornado") && lower.includes("warning")) return NWS_EVENT_COLOR["Tornado Warning"];
+  if (lower.includes("severe") && lower.includes("thunderstorm") && lower.includes("warning")) return NWS_EVENT_COLOR["Severe Thunderstorm Warning"];
+  if (lower.includes("flash") && lower.includes("flood") && lower.includes("warning")) return NWS_EVENT_COLOR["Flash Flood Warning"];
+  if (lower.includes("flood") && lower.includes("warning")) return NWS_EVENT_COLOR["Flood Warning"];
+  if (lower.includes("tornado") && lower.includes("watch")) return NWS_EVENT_COLOR["Tornado Watch"];
+  if (lower.includes("severe") && lower.includes("thunderstorm") && lower.includes("watch")) return NWS_EVENT_COLOR["Severe Thunderstorm Watch"];
+
+  // Winter (wordy fallbacks)
   if (lower.includes("blizzard") && lower.includes("warning")) return NWS_EVENT_COLOR["Blizzard Warning"];
   if (lower.includes("winter storm") && lower.includes("warning")) return NWS_EVENT_COLOR["Winter Storm Warning"];
   if (lower.includes("winter storm") && lower.includes("watch")) return NWS_EVENT_COLOR["Winter Storm Watch"];
   if (lower.includes("winter weather") && lower.includes("advisory")) return NWS_EVENT_COLOR["Winter Weather Advisory"];
-  return "#CC0000"; // fallback (what you were seeing)
+  if (lower.includes("ice") && lower.includes("storm") && lower.includes("warning")) return NWS_EVENT_COLOR["Ice Storm Warning"];
+
+  return "#CC0000"; // fallback
 }
 
 // NEW (your repo): alerts_20180414_0000Z.geojson
