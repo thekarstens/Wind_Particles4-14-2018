@@ -796,7 +796,7 @@ function alertsFileCompactHourly(d){
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
   const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./alerts_${Y}${M}${D}_${H}00Z.geojson`;
+  return `./timeline_hourly/alerts_${Y}${M}${D}_${H}00Z.geojson`; // NEW location in repo
 }
 
 // OLD (your repo): alerts_2018-04-14T21Z.geojson
@@ -805,7 +805,7 @@ function alertsFileOldDash(d){
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
   const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./alerts_${Y}-${M}-${D}T${H}Z.geojson`;
+  return `./timeline_hourly/alerts_${Y}-${M}-${D}T${H}Z.geojson`; // legacy naming in timeline_hourly
 }
 
 // Extra fallback (sometimes people store T2100Z)
@@ -814,7 +814,7 @@ function alertsFileOldWithMinutes(d){
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
   const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./alerts_${Y}-${M}-${D}T${H}00Z.geojson`;
+  return `./timeline_hourly/alerts_${Y}-${M}-${D}T${H}00Z.geojson`; // legacy naming in timeline_hourly
 }
 
 async function fetchFirstOk(urls){
@@ -966,6 +966,7 @@ map.on("overlayadd", async (e) => {
   // Existing behaviors
   if (e.layer === particlesToggle) await refreshParticlesIfOn();
   if (e.layer === alertsLayer) await loadAlerts();
+  if (e.layer === hrrrRefdLayer || e.layer === hrrrRefpLayer) { updateHRRRLayers(); }
 });
 
 map.on("overlayremove", (e) => {
@@ -1101,6 +1102,7 @@ async function refreshAll(){
 
   setStatus(`Stations shown: ${shown}/${total} (minSep ${minSep}px).`);
 
+  updateHRRRLayers();
   await loadAlerts();
 }
 
