@@ -62,20 +62,16 @@
     position:absolute;
     top:0; left:0; right:0;
     z-index:99999;
-    background:rgba(255,255,255,0.92);
-    color:#1f4e9e;
-    font:800 16px/1.2 Arial, sans-serif;
-    letter-spacing:0.6px;
-    padding:6px 14px;
-    border-bottom:4px solid #f28c28;
+    background:rgba(11,28,45,0.92);
+    color:#fff;
+    font:800 18px/1.2 Arial, sans-serif;
+    letter-spacing:0.5px;
+    padding:10px 16px;
+    border-bottom:1px solid rgba(255,255,255,0.15);
     display:none;
     text-transform:uppercase;
     pointer-events:none;
   }
-
-  /* keep layer control below banner */
-  .leaflet-top.leaflet-right{ margin-top:48px; }
-
   .legend{
     position:absolute;
     left:14px;
@@ -108,19 +104,18 @@
   #brandLogo{
     position:absolute;
     bottom:10px;
-    left:10px;
-    right:auto;
+    right:10px;
+    top:auto;
+    left:auto;
     z-index:100000;
-    width:90px;
-    max-width:18vw;
+    width:120px;
+    max-width:22vw;
     height:auto;
     display:none;
     opacity:0.95;
     filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
     pointer-events:none;
   }
-
-
 
 
 </style>
@@ -174,17 +169,44 @@
 ------------------------------------------------------------ */
 const map = L.map("map", { zoomControl:true }).setView([44.2, -96.5], 6);
 
-// Clean basemap with blue water (kid-friendly)
-const baseMap = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
+const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
-  attribution: "© OpenStreetMap contributors © CARTO"
+  attribution: "© OpenStreetMap contributors"
 }).addTo(map);
 
-// Optional labels overlay (toggle on when you want names)
-const labelOverlay = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
-  maxZoom: 19,
-  attribution: "© OpenStreetMap contributors © CARTO"
-});
+// -------------------------
+// Observed Radar (IEM USCOMP N0R)
+// Source docs: IEM NEXRAD mosaic PNGs are EPSG:4326 and have world files in same folders.
+// Bounds derived from n0r_0.wld (UL lon/lat -126,50; pixel 0.01; 6000x2600 => LR -66,24)
+const N0R_BOUNDS = [[24.0, -126.0], [50.0, -66.0]];  // [southWest],[northEast]
+const radarN0RLayer = L.imageOverlay("", N0R_BOUNDS, { opacity: 0.75, interactive:false, zIndex: 250 });
+
+function floorTo5Min(d){
+  const t = new Date(d.getTime());
+  t.setUTCSeconds(0,0);
+  const m = t.getUTCMinutes();
+  t.setUTCMinutes(m - (m % 5));
+  return t;
+}
+function n0rUrl(d){
+  const t = floorTo5Min(d);
+  const Y = t.getUTCFullYear();
+  const MM = String(t.getUTCMonth()+1).padStart(2,"0");
+  const DD = String(t.getUTCDate()).padStart(2,"0");
+  const HH = String(t.getUTCHours()).padStart(2,"0");
+  const mm = String(t.getUTCMinutes()).padStart(2,"0");
+  // IEM archive format:
+  // https://mesonet.agron.iastate.edu/archive/data/YYYY/mm/dd/GIS/uscomp/n0r_YYYYmmddHHMM.png
+  return `https://mesonet.agron.iastate.edu/archive/data/${Y}/${MM}/${DD}/GIS/uscomp/n0r_${Y}${MM}${DD}${HH}${mm}.png`;
+}
+function updateObservedRadar(){
+  if (!map.hasLayer(radarN0RLayer)) return;
+  const url = n0rUrl(current);
+  // cache-bust so GitHub Pages updates reliably when you scrub:
+  radarN0RLayer.setUrl(url + `?v=${Date.now()}`);
+}
+
+
 
 // Surface analysis overlay (WPC archive image) as a toggleable layer
 // URL pattern seen on WPC archive: /archives/sfc/YYYY/namussfcYYYYMMDDHH.gif
@@ -272,6 +294,26 @@ function showLegend(html){
 }
 function hideLegend(){ legendEl.style.display = "none"; legendEl.innerHTML = ""; }
 
+
+function legendRadar(){
+  // Simple N0R dBZ ticks (IEM composite_n0r). Colors are embedded in the PNG.
+  return `
+    <div class="legend-title">Reflectivity (dBZ)</div>
+    <div class="ticks"><span>-30</span><span>0</span><span>20</span><span>40</span><span>60</span><span>75</span></div>
+    <div class="legend-bar" style="height:10px;background:linear-gradient(to right,
+      #000000 0%,
+      #00ecec 12%,
+      #0000f6 22%,
+      #00ff00 38%,
+      #ffff00 54%,
+      #ff9000 70%,
+      #ff0000 82%,
+      #ff00ff 92%,
+      #ffffff 100%);"></div>
+    <div class="tiny" style="margin-top:6px;opacity:0.85">IEM USCOMP N0R (5‑min)</div>
+  `;
+}
+
 function legendTemp(){
   return `
     <div class="title">Temperature (°F)</div>
@@ -350,6 +392,7 @@ function legendPtype(){
 
 function uiForOverlay(name){
   const n = (name || "").toLowerCase();
+  if (n.includes("radar")) return { banner: "Observed Composite Radar (N0R)", legend: legendRadar() };
   if (n.includes("temperature")) return { banner: "Surface Temperatures", legend: legendTemp() };
   if (n.includes("dew")) return { banner: "Dew Point", legend: legendDew() };
   if (n.includes("wind speed") || n === "wind speed (mph)") return { banner: "Sustained Wind Speed", legend: legendWind() };
@@ -375,6 +418,8 @@ function refreshUI(){
   const ui = uiForOverlay(name);
   showBanner(ui.banner);
   showLegend(ui.legend);
+  // keep radar in sync when scrubbing time
+  updateObservedRadar();
 }
 
 
@@ -496,6 +541,9 @@ function updateHRRRLayers(){
 const particlesToggle = L.layerGroup();
 let particlesLayer = null;
 
+
+
+
 const baseLayers = {}; // keep OSM as the only base layer (no base selector in the control)
 
 // IMPORTANT: HRRR tile layers must be constructed BEFORE adding to the layer control.
@@ -503,7 +551,7 @@ const baseLayers = {}; // keep OSM as the only base layer (no base selector in t
 ensureHRRRLayers();
 
 const overlays = {
-  "Map Labels (optional)": labelOverlay,
+  "Radar (Observed N0R)": radarN0RLayer,
   "Temperature (°F)": tempLayer,
   "Dew Point (°F)": dewLayer,
   "Wind Speed (mph)": windNumLayer,
@@ -955,26 +1003,6 @@ async function fetchFirstOk(urls){
   throw new Error(lastErr || "No alert file matched");
 }
 
-
-const ALLOWED_ALERT_CODES = new Set(["TO.W","SV.W","FF.W","FL.W"]);
-function alertCodeFromProps(p){
-  const phen = pickProp(p, ["phenomena","phenom","PHENOM","phen"]).toUpperCase();
-  const sig  = pickProp(p, ["significance","sig","SIG"]).toUpperCase();
-  if (phen && sig) return `${phen}.${sig}`.toUpperCase();
-  const name = eventNameFromProps(p);
-  // Map common event strings back to codes
-  const n = String(name).toLowerCase();
-  if (n.includes('tornado') && n.includes('warning')) return 'TO.W';
-  if (n.includes('severe') && n.includes('thunderstorm') && n.includes('warning')) return 'SV.W';
-  if (n.includes('flash') && n.includes('flood') && n.includes('warning')) return 'FF.W';
-  if (n.includes('flood') && n.includes('warning')) return 'FL.W';
-  return '';
-}
-function shouldDrawAlert(p){
-  const code = alertCodeFromProps(p);
-  return ALLOWED_ALERT_CODES.has(code);
-}
-
 async function loadAlerts(){
   if (!map.hasLayer(alertsLayer)) return;
 
@@ -991,7 +1019,6 @@ async function loadAlerts(){
     alertsLayer.clearLayers();
 
     L.geoJSON(gj, {
-      filter: (feat) => shouldDrawAlert((feat && feat.properties) || {}),
       style: (feat) => {
         const p = feat.properties || {};
         const name = eventNameFromProps(p);
@@ -1110,6 +1137,7 @@ map.on("overlayadd", async (e) => {
   // Existing behaviors
   if (e.layer === particlesToggle) await refreshParticlesIfOn();
   if (e.layer === alertsLayer) await loadAlerts();
+  if (e.layer === radarN0RLayer) updateObservedRadar();
   if (e.layer === hrrrRefdLayer || e.layer === hrrrRefpLayer) { updateHRRRLayers();
   updateSurfaceLayer(); }
 });
