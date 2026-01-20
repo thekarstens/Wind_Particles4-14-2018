@@ -62,12 +62,12 @@
     position:absolute;
     top:0; left:0; right:0;
     z-index:99999;
-    background:rgba(11,28,45,0.92);
-    color:#fff;
-    font:800 18px/1.2 Arial, sans-serif;
-    letter-spacing:0.5px;
-    padding:10px 16px;
-    border-bottom:1px solid rgba(255,255,255,0.15);
+    background:rgba(255,255,255,0.92);
+    color:#1f4e9e;
+    font:900 16px/1.1 Arial, sans-serif;
+    letter-spacing:0.6px;
+    padding:6px 12px;
+    border-bottom:4px solid #f28c28;
     display:none;
     text-transform:uppercase;
     pointer-events:none;
@@ -104,12 +104,12 @@
   #brandLogo{
     position:absolute;
     bottom:10px;
-    right:10px;
+    left:10px;
+    right:auto;
     top:auto;
-    left:auto;
     z-index:100000;
-    width:120px;
-    max-width:22vw;
+    width:90px;
+    max-width:18vw;
     height:auto;
     display:none;
     opacity:0.95;
@@ -117,6 +117,9 @@
     pointer-events:none;
   }
 
+
+  /* Push Leaflet layer control below the top banner */
+  .leaflet-top.leaflet-right{ margin-top:52px; }
 
 </style>
 </head>
@@ -169,10 +172,21 @@
 ------------------------------------------------------------ */
 const map = L.map("map", { zoomControl:true }).setView([44.2, -96.5], 6);
 
-const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: "© OpenStreetMap contributors"
+// Clean, student-friendly basemap (minimal roads/labels)
+const cartoNoLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd',
+  maxZoom: 20,
+  attribution: '© OpenStreetMap contributors © CARTO'
 }).addTo(map);
+
+// Optional labels overlay (turn on only if you need place names)
+const cartoLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd',
+  maxZoom: 20,
+  opacity: 0.9,
+  attribution: '© CARTO'
+});
+
 
 // Surface analysis overlay (WPC archive image) as a toggleable layer
 // URL pattern seen on WPC archive: /archives/sfc/YYYY/namussfcYYYYMMDDHH.gif
@@ -491,6 +505,8 @@ const baseLayers = {}; // keep OSM as the only base layer (no base selector in t
 ensureHRRRLayers();
 
 const overlays = {
+  "Map Labels (optional)": cartoLabels,
+  "Labels (roads/towns)": baseLabels,
   "Temperature (°F)": tempLayer,
   "Dew Point (°F)": dewLayer,
   "Wind Speed (mph)": windNumLayer,
@@ -503,6 +519,8 @@ const overlays = {
   "Surface Analysis (WPC)": (ensureSurfaceLayer(), surfaceLayer),
   "Radar (HRRR REFD)": hrrrRefdLayer,
   "Precip Type (HRRR REFP)": hrrrRefpLayer,
+  "Observed Radar (local tiles)": L.tileLayer("./radar_tiles/{ts}/{z}/{x}/{y}.png".replace("{ts}", "20180414_1500Z"), {opacity:0.75}),
+  "Map Labels (optional)": cartoLabels,
   "Daily wind particles": particlesToggle
 };
 
@@ -518,6 +536,16 @@ const layerNameById = new Map();
 Object.entries(overlays).forEach(([name, layer]) => {
   layerNameById.set(L.Util.stamp(layer), name);
 });
+
+// Initialize banner/legend based on layers that start ON
+for (const [name, layer] of Object.entries(overlays)) {
+  if (map.hasLayer(layer)) {
+    activeOverlays.add(name);
+    lastOverlayName = name;
+  }
+}
+refreshUI();
+
 
 
 /* ------------------------------------------------------------
@@ -553,10 +581,11 @@ class CollisionIndex {
 }
 
 function minSepForZoom(z){
-  if (z <= 4) return 54;
-  if (z === 5) return 46;
-  if (z === 6) return 38;
-  if (z === 7) return 32;
+  // More spacing = fewer stations (cleaner for students)
+  if (z <= 4) return 78;
+  if (z === 5) return 64;
+  if (z === 6) return 52;
+  if (z === 7) return 40;
   return 0; // z >= 8 show all
 }
 function allowByCollision(index, lat, lon, minSepPx){
@@ -819,32 +848,23 @@ async function fetchRows(d, networks){
 }
 
 /* ------------------------------------------------------------
-   10) Alerts styling + LOADER (UPDATED for your new filenames)
+   10) Alerts styling + LOADER (filtered to Flood/Severe/Tornado)
 ------------------------------------------------------------ */
+
+// Only keep these hazards (removes FY.Y / fog and other clutter)
+const ALLOWED_ALERT_CODES = new Set(["TO.W", "SV.W", "FF.W", "FL.W"]);
+
+// Simple, student-friendly colors
 const NWS_EVENT_COLOR = {
-  // Common severe/flood colors (simple, TV-friendly)
+  "TO.W": "#FF0000",  // Tornado Warning
+  "SV.W": "#FFD700",  // Severe Thunderstorm Warning
+  "FF.W": "#00FF00",  // Flash Flood Warning
+  "FL.W": "#00A884",  // Flood Warning
+  // Common text fallbacks
   "Tornado Warning": "#FF0000",
   "Severe Thunderstorm Warning": "#FFD700",
   "Flash Flood Warning": "#00FF00",
-  "Flood Warning": "#00A884",
-  "Flood Advisory": "#00B3B3",
-
-  // VTEC shorthand fallbacks (phen.sig)
-  "TO.W": "#FF0000",
-  "SV.W": "#FFD700",
-  "FF.W": "#00FF00",
-  "FL.W": "#00A884",
-  "FA.Y": "#00B3B3",
-
-  "Blizzard Warning": "#FF4500",
-  "Winter Storm Warning": "#FF69B4",
-  "Winter Storm Watch": "#4682B4",
-  "Winter Weather Advisory": "#7B68EE",
-  "Ice Storm Warning": "#8B008B",
-  "Snow Squall Warning": "#C71585",
-  "High Wind Warning": "#DAA520",
-  "Wind Advisory": "#D2B48C",
-  "Dense Fog Advisory": "#708090"
+  "Flood Warning": "#00A884"
 };
 
 function pickProp(p, keys){
@@ -857,74 +877,69 @@ function pickProp(p, keys){
   return "";
 }
 
+function alertCodeFromProps(p){
+  const phen = pickProp(p, ["phenomena","phenom","PHENOM","phen"]).toUpperCase();
+  const sig  = pickProp(p, ["significance","sig","SIG"]).toUpperCase();
+  if (phen && sig) return `${phen}.${sig}`;
+
+  // Some feeds store only a text event name
+  const name = (pickProp(p, ["event","headline","name","title"]) || "").toLowerCase();
+  if (name.includes("tornado") && name.includes("warning")) return "TO.W";
+  if (name.includes("severe") && name.includes("thunderstorm") && name.includes("warning")) return "SV.W";
+  if (name.includes("flash") && name.includes("flood") && name.includes("warning")) return "FF.W";
+  if (name.includes("flood") && name.includes("warning")) return "FL.W";
+  return "";
+}
+
 function eventNameFromProps(p){
+  // Prefer the human-readable event
   const e = pickProp(p, ["event","headline","name","title"]);
   if (e) return e;
 
-  const phen = pickProp(p, ["phenomena","phenom","PHENOM","phen"]);
-  const sig  = pickProp(p, ["significance","sig","SIG"]);
-  if (phen && sig){
-    const key = `${phen}.${sig}`.toUpperCase();
-    if (key === "TO.W") return "Tornado Warning";
-    if (key === "SV.W") return "Severe Thunderstorm Warning";
-    if (key === "FF.W") return "Flash Flood Warning";
-    if (key === "FL.W") return "Flood Warning";
-    if (key === "FA.Y") return "Flood Advisory";
-    if (key === "BZ.W") return "Blizzard Warning";
-    if (key === "WS.W") return "Winter Storm Warning";
-    if (key === "WS.A") return "Winter Storm Watch";
-    if (key === "WW.Y") return "Winter Weather Advisory";
-    return key;
-  }
-
-  const wfo = pickProp(p, ["WFO","wfo"]);
-  const etn = pickProp(p, ["ETN","etn"]);
-  return (wfo || etn) ? `Alert ${wfo || ""} ${etn || ""}`.trim() : "Alert";
+  // Fall back to code
+  const code = alertCodeFromProps(p);
+  if (code === "TO.W") return "Tornado Warning";
+  if (code === "SV.W") return "Severe Thunderstorm Warning";
+  if (code === "FF.W") return "Flash Flood Warning";
+  if (code === "FL.W") return "Flood Warning";
+  return code || "Alert";
 }
 
-function colorForAlertName(name){
-  if (NWS_EVENT_COLOR[name]) return NWS_EVENT_COLOR[name];
-  const lower = String(name).toLowerCase();
-  // Text matches (some feeds don't provide clean 'event')
-  if (lower.includes("tornado") && lower.includes("warning")) return NWS_EVENT_COLOR["Tornado Warning"];
-  if (lower.includes("severe") && lower.includes("thunderstorm") && lower.includes("warning")) return NWS_EVENT_COLOR["Severe Thunderstorm Warning"];
-  if (lower.includes("flash") && lower.includes("flood") && lower.includes("warning")) return NWS_EVENT_COLOR["Flash Flood Warning"];
-  if (lower.includes("flood") && lower.includes("warning")) return NWS_EVENT_COLOR["Flood Warning"];
-  if (lower.includes("flood") && (lower.includes("advisory") || lower.includes("statement"))) return NWS_EVENT_COLOR["Flood Advisory"];
-
-  if (lower.includes("blizzard") && lower.includes("warning")) return NWS_EVENT_COLOR["Blizzard Warning"];
-  if (lower.includes("winter storm") && lower.includes("warning")) return NWS_EVENT_COLOR["Winter Storm Warning"];
-  if (lower.includes("winter storm") && lower.includes("watch")) return NWS_EVENT_COLOR["Winter Storm Watch"];
-  if (lower.includes("winter weather") && lower.includes("advisory")) return NWS_EVENT_COLOR["Winter Weather Advisory"];
-  // Last resort: keep polygons visible, but not everything red
-  return "#B000B0";
+function colorForAlert(p){
+  const code = alertCodeFromProps(p);
+  if (NWS_EVENT_COLOR[code]) return NWS_EVENT_COLOR[code];
+  const name = eventNameFromProps(p);
+  return NWS_EVENT_COLOR[name] || "#999999";
 }
 
-// NEW (your repo): alerts_20180414_0000Z.geojson
+function shouldDrawAlert(p){
+  const code = alertCodeFromProps(p);
+  return ALLOWED_ALERT_CODES.has(code);
+}
+
+// Your repo naming (preferred): ./timeline_hourly/alerts_20180414_1200Z.geojson
 function alertsFileCompactHourly(d){
   const Y = d.getUTCFullYear();
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
   const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./timeline_hourly/alerts_${Y}${M}${D}_${H}00Z.geojson`; // NEW location in repo
+  return `./timeline_hourly/alerts_${Y}${M}${D}_${H}00Z.geojson`;
 }
 
-// OLD (your repo): alerts_2018-04-14T21Z.geojson
+// Legacy fallbacks if you ever mix old files in
 function alertsFileOldDash(d){
   const Y = d.getUTCFullYear();
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
   const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./timeline_hourly/alerts_${Y}-${M}-${D}T${H}Z.geojson`; // legacy naming in timeline_hourly
+  return `./timeline_hourly/alerts_${Y}-${M}-${D}T${H}Z.geojson`;
 }
-
-// Extra fallback (sometimes people store T2100Z)
 function alertsFileOldWithMinutes(d){
   const Y = d.getUTCFullYear();
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
   const H = String(d.getUTCHours()).padStart(2,"0");
-  return `./timeline_hourly/alerts_${Y}-${M}-${D}T${H}00Z.geojson`; // legacy naming in timeline_hourly
+  return `./timeline_hourly/alerts_${Y}-${M}-${D}T${H}00Z.geojson`;
 }
 
 async function fetchFirstOk(urls){
@@ -933,8 +948,7 @@ async function fetchFirstOk(urls){
     try{
       const r = await fetch(u, { cache:"no-store" });
       if (!r.ok) { lastErr = `HTTP ${r.status}`; continue; }
-      const gj = await r.json();
-      return { url: u, gj };
+      return { url: u, gj: await r.json() };
     } catch(e){
       lastErr = e.message || String(e);
     }
@@ -945,7 +959,6 @@ async function fetchFirstOk(urls){
 async function loadAlerts(){
   if (!map.hasLayer(alertsLayer)) return;
 
-  // Prefer your new hourly timeline files, but keep backward compatibility
   const candidates = [
     alertsFileCompactHourly(current),
     alertsFileOldDash(current),
@@ -954,20 +967,20 @@ async function loadAlerts(){
 
   try{
     const { url, gj } = await fetchFirstOk(candidates);
-
     alertsLayer.clearLayers();
 
     L.geoJSON(gj, {
+      filter: (feat) => shouldDrawAlert((feat && feat.properties) || {}),
       style: (feat) => {
-        const p = feat.properties || {};
-        const name = eventNameFromProps(p);
-        const c = colorForAlertName(name);
-        return { weight:2, color:c, fillColor:c, fillOpacity:0.18 };
+        const p = (feat && feat.properties) || {};
+        const c = colorForAlert(p);
+        return { weight: 2, color: c, fillColor: c, fillOpacity: 0.22 };
       },
       onEachFeature: (feat, layer) => {
-        const p = feat.properties || {};
+        const p = (feat && feat.properties) || {};
         const name = eventNameFromProps(p);
-        const c = colorForAlertName(name);
+        const code = alertCodeFromProps(p) || "";
+        const c = colorForAlert(p);
 
         const wfo = pickProp(p, ["WFO","wfo"]);
         const etn = pickProp(p, ["ETN","etn"]);
@@ -976,30 +989,21 @@ async function loadAlerts(){
         const expire = pickProp(p, ["expire","expires","end","EXPIRE","EXPIRES"]);
 
         const lines = [];
-        lines.push(`<div><span class="swatch" style="background:${c}"></span><b>${name}</b></div>`);
+        lines.push(`<div><span class="swatch" style="background:${c}"></span><b>${name}</b> <span style="opacity:.8">${code ? '('+code+')' : ''}</span></div>`);
         if (wfo || etn) lines.push(`Office/Event: <b>${wfo || "—"}</b> / <b>${etn || "—"}</b>`);
         if (status) lines.push(`Status: <b>${status}</b>`);
         if (issued) lines.push(`Issued: <b>${issued}</b>`);
         if (expire) lines.push(`Expires: <b>${expire}</b>`);
-
-        const hasHazard = !!pickProp(p, ["event","phenomena","phenom","PHENOM","significance","sig","SIG"]);
-        if (!hasHazard){
-          lines.push(`<div style="margin-top:6px;opacity:.75">
-            Note: this alert file doesn’t include hazard type (Blizzard/WSW/etc), so colors may be limited.
-          </div>`);
-        }
-
         layer.bindPopup(lines.join("<br>"));
       }
-    }).eachLayer(l => alertsLayer.addLayer(l));
+    }).addTo(alertsLayer);
 
-    // Small status breadcrumb to confirm which file actually loaded
-    setStatus(`Alerts loaded: ${url.replace("./","")}`);
+    setStatus(`Alerts loaded: ${url.replace('./','')}`);
 
   } catch(e){
     console.warn("Alerts load failed:", e.message);
     alertsLayer.clearLayers();
-    setStatus("Alerts not found for this hour (check filenames).");
+    setStatus("Alerts not found for this hour (check filenames)." );
   }
 }
 
