@@ -118,6 +118,9 @@
   }
 
 
+
+/* Make observed radar a bit less 'dark' */
+.obs-radar { filter: brightness(1.15) contrast(1.05); }
 </style>
 </head>
 
@@ -169,43 +172,17 @@
 ------------------------------------------------------------ */
 const map = L.map("map", { zoomControl:true }).setView([44.2, -96.5], 6);
 
-const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: "© OpenStreetMap contributors"
+const osm = // Clean basemap with blue water
+const baseTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  maxZoom: 20,
+  attribution: "© OpenStreetMap contributors © CARTO"
 }).addTo(map);
 
-// -------------------------
-// Observed Radar (IEM USCOMP N0R)
-// Source docs: IEM NEXRAD mosaic PNGs are EPSG:4326 and have world files in same folders.
-// Bounds derived from n0r_0.wld (UL lon/lat -126,50; pixel 0.01; 6000x2600 => LR -66,24)
-const N0R_BOUNDS = [[24.0, -126.0], [50.0, -66.0]];  // [southWest],[northEast]
-const radarN0RLayer = L.imageOverlay("", N0R_BOUNDS, { opacity: 0.75, interactive:false, zIndex: 250 });
-
-function floorTo5Min(d){
-  const t = new Date(d.getTime());
-  t.setUTCSeconds(0,0);
-  const m = t.getUTCMinutes();
-  t.setUTCMinutes(m - (m % 5));
-  return t;
-}
-function n0rUrl(d){
-  const t = floorTo5Min(d);
-  const Y = t.getUTCFullYear();
-  const MM = String(t.getUTCMonth()+1).padStart(2,"0");
-  const DD = String(t.getUTCDate()).padStart(2,"0");
-  const HH = String(t.getUTCHours()).padStart(2,"0");
-  const mm = String(t.getUTCMinutes()).padStart(2,"0");
-  // IEM archive format:
-  // https://mesonet.agron.iastate.edu/archive/data/YYYY/mm/dd/GIS/uscomp/n0r_YYYYmmddHHMM.png
-  return `https://mesonet.agron.iastate.edu/archive/data/${Y}/${MM}/${DD}/GIS/uscomp/n0r_${Y}${MM}${DD}${HH}${mm}.png`;
-}
-function updateObservedRadar(){
-  if (!map.hasLayer(radarN0RLayer)) return;
-  const url = n0rUrl(current);
-  // cache-bust so GitHub Pages updates reliably when you scrub:
-  radarN0RLayer.setUrl(url + `?v=${Date.now()}`);
-}
-
+// Labels layer (states/cities) to keep the basemap uncluttered
+const labelTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+  maxZoom: 20,
+  attribution: ""
+}).addTo(map);
 
 
 // Surface analysis overlay (WPC archive image) as a toggleable layer
@@ -237,6 +214,57 @@ function updateSurfaceLayer(){
   if (!surfaceLayer) return;
   surfaceLayer.setUrl(surfaceUrl(current));
 }
+
+
+// ------------------------------------------------------------
+// Observed Composite Radar (IEM USCOMP PNG frames you generate in Colab)
+// Repo layout expected:
+//   radar_frames/radar_20180414_0635Z.png
+//   radar_frames/radar_bounds.json    (created by Colab; contains {south,west,north,east})
+// ------------------------------------------------------------
+const TRANSPARENT_PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+let radarBounds = L.latLngBounds([[24.0, -126.0],[50.0, -66.0]]); // fallback; Colab will generate exact bounds
+const radarObservedLayer = L.imageOverlay(TRANSPARENT_PX, radarBounds, {opacity:0.6, interactive:false, className:'obs-radar'});
+
+// Load exact bounds once (non-blocking). Put radar_bounds.json in radar_frames/
+(async () => {
+  try{
+    const resp = await fetch("./radar_frames/radar_bounds.json", {cache:"no-store"});
+    if (!resp.ok) return;
+    const b = await resp.json();
+    if (b && isFinite(b.south) && isFinite(b.west) && isFinite(b.north) && isFinite(b.east)){
+      radarBounds = L.latLngBounds([[b.south, b.west],[b.north, b.east]]);
+      radarObservedLayer.setBounds(radarBounds);
+    }
+  }catch(e){ /* ignore */ }
+})();
+
+function radarObservedFilename(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  const m = String(d.getUTCMinutes()).padStart(2,"0");
+  return `radar_${Y}${M}${D}_${H}${m}Z.png`;
+}
+function radarObservedUrl(d){
+  return `./radar_frames/${radarObservedFilename(d)}`;
+}
+function snapToMinutes(d, stepMin){
+  const t = d.getTime();
+  const stepMs = stepMin*60*1000;
+  return new Date(Math.round(t/stepMs)*stepMs);
+}
+function updateObservedRadar(){
+  if (!map.hasLayer(radarObservedLayer)) return;
+
+  // If your frame cadence is 5 min, this will line up.
+  // If you generated 15-min frames, set CADENCE_MIN = 15.
+  const CADENCE_MIN = 5;
+  const snapped = snapToMinutes(current, CADENCE_MIN);
+  radarObservedLayer.setUrl(radarObservedUrl(snapped));
+}
+
 
 
 map.attributionControl.setPrefix(false);
@@ -293,26 +321,6 @@ function showLegend(html){
   legendEl.style.display = "block";
 }
 function hideLegend(){ legendEl.style.display = "none"; legendEl.innerHTML = ""; }
-
-
-function legendRadar(){
-  // Simple N0R dBZ ticks (IEM composite_n0r). Colors are embedded in the PNG.
-  return `
-    <div class="legend-title">Reflectivity (dBZ)</div>
-    <div class="ticks"><span>-30</span><span>0</span><span>20</span><span>40</span><span>60</span><span>75</span></div>
-    <div class="legend-bar" style="height:10px;background:linear-gradient(to right,
-      #000000 0%,
-      #00ecec 12%,
-      #0000f6 22%,
-      #00ff00 38%,
-      #ffff00 54%,
-      #ff9000 70%,
-      #ff0000 82%,
-      #ff00ff 92%,
-      #ffffff 100%);"></div>
-    <div class="tiny" style="margin-top:6px;opacity:0.85">IEM USCOMP N0R (5‑min)</div>
-  `;
-}
 
 function legendTemp(){
   return `
@@ -372,6 +380,14 @@ function legendParticles(){
 
 
 
+
+function legendObsRadar(){
+  return `
+    <div class="title">Composite Radar (Observed)</div>
+    <div class="tiny">IEM US composite PNG frames (archive). Opacity can be adjusted later.</div>
+  `;
+}
+
 function legendRadar(){
   return `
     <div class="title">Radar (HRRR REFD)</div>
@@ -392,7 +408,6 @@ function legendPtype(){
 
 function uiForOverlay(name){
   const n = (name || "").toLowerCase();
-  if (n.includes("radar")) return { banner: "Observed Composite Radar (N0R)", legend: legendRadar() };
   if (n.includes("temperature")) return { banner: "Surface Temperatures", legend: legendTemp() };
   if (n.includes("dew")) return { banner: "Dew Point", legend: legendDew() };
   if (n.includes("wind speed") || n === "wind speed (mph)") return { banner: "Sustained Wind Speed", legend: legendWind() };
@@ -402,6 +417,7 @@ function uiForOverlay(name){
   if (n.includes("pressure")) return { banner: "Pressure Trend", legend: legendPressure() };
   if (n.includes("weather codes")) return { banner: "Present Weather", legend: legendWx() };
   if (n.includes("alerts")) return { banner: "Weather Alerts", legend: legendAlerts() };
+  if (n.includes("composite radar")) return { banner: "COMPOSITE RADAR (OBS)", legend: legendObsRadar() };
   if (n.includes("radar")) return { banner: "RADAR (HRRR)", legend: legendRadar() };
   if (n.includes("precip type") || n.includes("refp")) return { banner: "PRECIPITATION TYPE (HRRR)", legend: legendPtype() };
   if (n.includes("particles")) return { banner: "Wind Particles", legend: legendParticles() };
@@ -418,8 +434,6 @@ function refreshUI(){
   const ui = uiForOverlay(name);
   showBanner(ui.banner);
   showLegend(ui.legend);
-  // keep radar in sync when scrubbing time
-  updateObservedRadar();
 }
 
 
@@ -541,9 +555,6 @@ function updateHRRRLayers(){
 const particlesToggle = L.layerGroup();
 let particlesLayer = null;
 
-
-
-
 const baseLayers = {}; // keep OSM as the only base layer (no base selector in the control)
 
 // IMPORTANT: HRRR tile layers must be constructed BEFORE adding to the layer control.
@@ -551,7 +562,6 @@ const baseLayers = {}; // keep OSM as the only base layer (no base selector in t
 ensureHRRRLayers();
 
 const overlays = {
-  "Radar (Observed N0R)": radarN0RLayer,
   "Temperature (°F)": tempLayer,
   "Dew Point (°F)": dewLayer,
   "Wind Speed (mph)": windNumLayer,
@@ -562,6 +572,7 @@ const overlays = {
   "Weather Codes": wxLayer,
   "Alerts (WWA)": alertsLayer,
   "Surface Analysis (WPC)": (ensureSurfaceLayer(), surfaceLayer),
+  "Composite Radar (Observed)": radarObservedLayer,
   "Radar (HRRR REFD)": hrrrRefdLayer,
   "Precip Type (HRRR REFP)": hrrrRefpLayer,
   "Daily wind particles": particlesToggle
@@ -1137,7 +1148,7 @@ map.on("overlayadd", async (e) => {
   // Existing behaviors
   if (e.layer === particlesToggle) await refreshParticlesIfOn();
   if (e.layer === alertsLayer) await loadAlerts();
-  if (e.layer === radarN0RLayer) updateObservedRadar();
+  if (e.layer === radarObservedLayer) { updateObservedRadar(); }
   if (e.layer === hrrrRefdLayer || e.layer === hrrrRefpLayer) { updateHRRRLayers();
   updateSurfaceLayer(); }
 });
@@ -1274,6 +1285,8 @@ async function refreshAll(){
   }
 
   setStatus(`Stations shown: ${shown}/${total} (minSep ${minSep}px).`);
+
+  updateObservedRadar();
 
   updateHRRRLayers();
   updateSurfaceLayer();
