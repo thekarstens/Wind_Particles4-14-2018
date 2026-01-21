@@ -121,11 +121,6 @@
 
 /* Make observed radar a bit less 'dark' */
 .obs-radar { filter: brightness(1.15) contrast(1.05); }
-
-  /* Keep the layer toggle box below the banner */
-  .leaflet-top.leaflet-right { top: 64px; }
-  .leaflet-control-layers { z-index: 100001; }
-
 </style>
 </head>
 
@@ -254,206 +249,62 @@ function snapToStepUTC(d, stepMin){
   return t;
 }
 
+function iemUsradUrl(d){
+  // /usrad/ is 5-minute imagery
+  const t = snapToStepUTC(d, 5);
+  const Y = t.getUTCFullYear();
+  const M = String(t.getUTCMonth()+1).padStart(2,"0");
+  const D = String(t.getUTCDate()).padStart(2,"0");
+  const H = String(t.getUTCHours()).padStart(2,"0");
+  const mnt = String(t.getUTCMinutes()).padStart(2,"0");
+  return `https://mesonet.agron.iastate.edu/archive/data/${Y}/${M}/${D}/usrad/n0r_${Y}${M}${D}_${H}${mnt}.png`;
+}
 
-  // ===========================================================================
-  // OBSERVED COMPOSITE RADAR (IEM n0q) — LOCAL FILES IN YOUR REPO (3-hour frames)
-  //
-  // Put files here (recommended):  ./radar_frames/n0q_YYYYMMDDHHMM.png
-  // Example: ./radar_frames/n0q_201804141500.png
-  //
-  // Also supported as fallback:   ./radar_files/...
-  //
-  // Optional bounds file (recommended): ./radar_frames/radar_bounds.json
-  // Accepted formats:
-  //   {"south":..,"west":..,"north":..,"east":..}
-  //   [[south,west],[north,east]]
-  //   {"bounds":[[south,west],[north,east]]}
-  // ===========================================================================
+// Placeholder bounds; will be updated from image dimensions on first load
+let radarBounds = L.latLngBounds([[23.0, -126.0],[50.0, -66.0]]);
+let radarBoundsReady = false;
 
-  const OBS_RADAR_DIRS = ["radar_frames", "radar_files"]; // try in this order
-  const OBS_RADAR_PREFIX = "n0q_";                        // you said you're using n0q
-  const OBS_RADAR_EXT = ".png";
-  const OBS_RADAR_STEP_MINUTES = 180; // 3 hours
+const radarObservedLayer = L.imageOverlay(TRANSPARENT_PX, radarBounds, {
+  opacity: 0.60,
+  interactive: false,
+  className: "obs-radar"
+});
 
-  // If we can load bounds from radar_bounds.json, we will.
-  // Otherwise we fall back to the standard IEM "world file" geometry, computing bounds from image size:
-  // world file params you pasted: dx=0.005, dy=-0.005, west=-126.0, north=50.0
-  const WORLD_DX = 0.005;
-  const WORLD_DY = -0.005;
-  const WORLD_WEST = -126.0;
-  const WORLD_NORTH = 50.0;
+// Keep black background from overwhelming the map
+radarObservedLayer.on("add", () => {
+  const el = radarObservedLayer.getElement();
+  if (el) el.style.mixBlendMode = "screen";
+});
 
-  let obsRadarBounds = null;   // Leaflet LatLngBounds once known
-  let radarObservedLayer = null;
-  let _obsBoundsLoadingPromise = null;
+function updateObservedRadar(){
+  if (!map.hasLayer(radarObservedLayer)) return;
 
-  function pad2(n){ return String(n).padStart(2,"0"); }
+  const url = iemUsradUrl(current);
 
-  function snapToStepUTC(d, stepMinutes){
-    const ms = d.getTime();
-    const stepMs = stepMinutes * 60 * 1000;
-    return new Date(Math.floor(ms / stepMs) * stepMs);
+  // First time: load the image so we can compute exact bounds
+  if (!radarBoundsReady){
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      radarBounds = boundsFromWorldFile(img.naturalWidth, img.naturalHeight);
+      radarObservedLayer.setBounds(radarBounds);
+      radarObservedLayer.setUrl(url);
+
+      const el = radarObservedLayer.getElement();
+      if (el) el.style.mixBlendMode = "screen";
+
+      radarBoundsReady = true;
+    };
+    img.onerror = () => {
+      // Still try to show something even if sizing fails
+      radarObservedLayer.setUrl(url);
+    };
+    img.src = url;
+    return;
   }
 
-  function obsRadarFilenameForTime(dUTC){
-    // dUTC is a JS Date (we assume UTC time is encoded in it for display)
-    const y = dUTC.getUTCFullYear();
-    const mo = pad2(dUTC.getUTCMonth()+1);
-    const da = pad2(dUTC.getUTCDate());
-    const hh = pad2(dUTC.getUTCHours());
-    const mm = pad2(dUTC.getUTCMinutes());
-    // Your filenames look like: n0q_201804141500.png  (NO underscore before HHMM, NO Z)
-    return `${OBS_RADAR_PREFIX}${y}${mo}${da}${hh}${mm}${OBS_RADAR_EXT}`;
-  }
-
-  function obsRadarCandidateUrls(d){
-    const t = snapToStepUTC(d, OBS_RADAR_STEP_MINUTES);
-    const fname = obsRadarFilenameForTime(t);
-
-    // Sometimes folks include underscores / Z — try a few variants just in case.
-    const y = t.getUTCFullYear();
-    const mo = pad2(t.getUTCMonth()+1);
-    const da = pad2(t.getUTCDate());
-    const hh = pad2(t.getUTCHours());
-    const mm = pad2(t.getUTCMinutes());
-    const variants = [
-      fname,
-      `${OBS_RADAR_PREFIX}${y}${mo}${da}_${hh}${mm}${OBS_RADAR_EXT}`,
-      `${OBS_RADAR_PREFIX}${y}${mo}${da}${hh}${mm}Z${OBS_RADAR_EXT}`,
-      `${OBS_RADAR_PREFIX}${y}${mo}${da}_${hh}${mm}Z${OBS_RADAR_EXT}`,
-      // old pattern we used earlier:
-      `radar_${y}${mo}${da}_${hh}${mm}Z${OBS_RADAR_EXT}`,
-    ];
-
-    const urls = [];
-    for (const dir of OBS_RADAR_DIRS){
-      for (const v of variants){
-        urls.push(`./${dir}/${v}`);
-      }
-    }
-    return urls;
-  }
-
-  async function firstExistingUrl(urls){
-    for (const url of urls){
-      try{
-        const r = await fetch(url, { method: "HEAD", cache: "no-store" });
-        if (r.ok) return url;
-        // Some hosts don't like HEAD; fall back to GET
-        if (r.status === 405){
-          const r2 = await fetch(url, { method: "GET", cache: "no-store" });
-          if (r2.ok) return url;
-        }
-      }catch(e){
-        // ignore
-      }
-    }
-    return null;
-  }
-
-  function parseBoundsJson(j){
-    if (!j) return null;
-    // [[south,west],[north,east]]
-    if (Array.isArray(j) && j.length === 2 && Array.isArray(j[0]) && j[0].length === 2){
-      return L.latLngBounds(j);
-    }
-    // {bounds:[[...]]}
-    if (j.bounds && Array.isArray(j.bounds)){
-      return L.latLngBounds(j.bounds);
-    }
-    // {south,west,north,east}
-    if (typeof j.south === "number" && typeof j.west === "number" && typeof j.north === "number" && typeof j.east === "number"){
-      return L.latLngBounds([[j.south, j.west],[j.north, j.east]]);
-    }
-    return null;
-  }
-
-  async function loadObsRadarBounds(){
-    if (obsRadarBounds) return obsRadarBounds;
-    if (_obsBoundsLoadingPromise) return _obsBoundsLoadingPromise;
-
-    _obsBoundsLoadingPromise = (async ()=>{
-      // Try bounds file in each folder
-      for (const dir of OBS_RADAR_DIRS){
-        const url = `./${dir}/radar_bounds.json`;
-        try{
-          const r = await fetch(url, { cache: "no-store" });
-          if (r.ok){
-            const j = await r.json();
-            const b = parseBoundsJson(j);
-            if (b){
-              obsRadarBounds = b;
-              return obsRadarBounds;
-            }
-          }
-        }catch(e){ /* ignore */ }
-      }
-      return null;
-    })();
-
-    return _obsBoundsLoadingPromise;
-  }
-
-  async function computeBoundsFromImage(url){
-    return new Promise((resolve)=>{
-      const img = new Image();
-      img.onload = ()=>{
-        const w = img.naturalWidth || img.width;
-        const h = img.naturalHeight || img.height;
-
-        const west = WORLD_WEST;
-        const north = WORLD_NORTH;
-        const east = west + WORLD_DX * w;
-        const south = north + WORLD_DY * h; // WORLD_DY is negative
-        resolve(L.latLngBounds([[south, west], [north, east]]));
-      };
-      img.onerror = ()=> resolve(null);
-      img.src = url;
-    });
-  }
-
-  async function ensureObservedRadarLayer(){
-    if (radarObservedLayer) return radarObservedLayer;
-
-    // Try to establish bounds
-    obsRadarBounds = await loadObsRadarBounds();
-
-    // Create a placeholder layer; we will update URL immediately after
-    const dummyBounds = obsRadarBounds || L.latLngBounds([[23.0, -126.0],[50.0, -66.0]]);
-    radarObservedLayer = L.imageOverlay("", dummyBounds, {
-      opacity: 0.65,
-      className: "obs-radar",
-      interactive: false
-    });
-
-    // Add to layer control (later, in overlays map)
-    return radarObservedLayer;
-  }
-
-  async function updateObservedRadar(){
-    if (!radarObservedLayer) await ensureObservedRadarLayer();
-
-    const urls = obsRadarCandidateUrls(current);
-    const chosen = await firstExistingUrl(urls);
-
-    if (!chosen){
-      statusEl.textContent = "Observed radar: no matching file found for this time. Check filenames in /radar_frames/ (or /radar_files/).";
-      // Clear overlay image
-      try { radarObservedLayer.setUrl(""); } catch(e){}
-      return;
-    }
-
-    // If we still don't know bounds, compute from the image size
-    if (!obsRadarBounds){
-      obsRadarBounds = await computeBoundsFromImage(chosen);
-      if (obsRadarBounds){
-        radarObservedLayer.setBounds(obsRadarBounds);
-      }
-    }
-
-    radarObservedLayer.setUrl(chosen);
-  }
-
+  radarObservedLayer.setUrl(url);
+}
 
 
 
@@ -654,12 +505,12 @@ updateTimeLabel();
 document.getElementById("backBtn").onclick = async () => {
   current = new Date(current.getTime() - stepHours*3600*1000);
   updateTimeLabel();
-  await refreshAll();
+  refreshAll();
 };
 document.getElementById("fwdBtn").onclick = async () => {
   current = new Date(current.getTime() + stepHours*3600*1000);
   updateTimeLabel();
-  await refreshAll();
+  refreshAll();
 };
 
 // Surface analysis (simple): opens WPC Surface Analysis Archive.
@@ -676,12 +527,12 @@ updateDayLabel();
 document.getElementById("dayBackBtn").onclick = async () => {
   particleDay = Math.max(13, particleDay - 1);
   updateDayLabel();
-  await refreshParticlesIfOn();
+  refreshParticlesIfOn();
 };
 document.getElementById("dayFwdBtn").onclick = async () => {
   particleDay = Math.min(15, particleDay + 1);
   updateDayLabel();
-  await refreshParticlesIfOn();
+  refreshParticlesIfOn();
 };
 
 /* ------------------------------------------------------------
@@ -1075,10 +926,10 @@ function parseCSV(text){
   });
 }
 
-async function fetchRows(d, networks){
-  const resp = await fetch(asosURL(d, networks), { cache:"no-store" });
+function fetchRows(d, networks){
+  const resp = fetch(asosURL(d, networks), { cache:"no-store" });
   if (!resp.ok) throw new Error(`METAR HTTP ${resp.status}`);
-  return parseCSV(await resp.text());
+  return parseCSV(resp.text());
 }
 
 /* ------------------------------------------------------------
@@ -1190,13 +1041,13 @@ function alertsFileOldWithMinutes(d){
   return `./timeline_hourly/alerts_${Y}-${M}-${D}T${H}00Z.geojson`; // legacy naming in timeline_hourly
 }
 
-async function fetchFirstOk(urls){
+function fetchFirstOk(urls){
   let lastErr = "";
   for (const u of urls){
     try{
-      const r = await fetch(u, { cache:"no-store" });
+      const r = fetch(u, { cache:"no-store" });
       if (!r.ok) { lastErr = `HTTP ${r.status}`; continue; }
-      const gj = await r.json();
+      const gj = r.json();
       return { url: u, gj };
     } catch(e){
       lastErr = e.message || String(e);
@@ -1205,7 +1056,7 @@ async function fetchFirstOk(urls){
   throw new Error(lastErr || "No alert file matched");
 }
 
-async function loadAlerts(){
+function loadAlerts(){
   if (!map.hasLayer(alertsLayer)) return;
 
   // Prefer your new hourly timeline files, but keep backward compatibility
@@ -1216,7 +1067,7 @@ async function loadAlerts(){
   ];
 
   try{
-    const { url, gj } = await fetchFirstOk(candidates);
+    const { url, gj } = fetchFirstOk(candidates);
 
     alertsLayer.clearLayers();
 
@@ -1279,7 +1130,7 @@ function normalizeVelocityJson(raw){
   return raw;
 }
 
-async function refreshParticlesIfOn(){
+function refreshParticlesIfOn(){
   if (!map.hasLayer(particlesToggle)) return;
 
   if (typeof L.velocityLayer !== "function"){
@@ -1290,9 +1141,9 @@ async function refreshParticlesIfOn(){
   const url = particlesFileForDay(particleDay);
 
   try{
-    const r = await fetch(url, { cache:"no-store" });
+    const r = fetch(url, { cache:"no-store" });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const raw = await r.json();
+    const raw = r.json();
     const velData = normalizeVelocityJson(raw);
 
     if (particlesLayer){
@@ -1337,8 +1188,8 @@ map.on("overlayadd", async (e) => {
   }
 
   // Existing behaviors
-  if (e.layer === particlesToggle) await refreshParticlesIfOn();
-  if (e.layer === alertsLayer) await loadAlerts();
+  if (e.layer === particlesToggle) refreshParticlesIfOn();
+  if (e.layer === alertsLayer) loadAlerts();
   if (e.layer === radarObservedLayer) { updateObservedRadar(); }
   if (e.layer === hrrrRefdLayer || e.layer === hrrrRefpLayer) { updateHRRRLayers();
   updateSurfaceLayer(); }
@@ -1365,12 +1216,12 @@ map.on("overlayremove", (e) => {
 /* ------------------------------------------------------------
    12) Main refresh (METAR + alerts + arrows)
 ------------------------------------------------------------ */
-async function refreshAll(){
+function refreshAll(){
   setStatus("Loading METARs…");
 
   const prev = new Date(current.getTime() - stepHours*3600*1000);
 
-  const [sdNow, restNow, sdPrev, restPrev] = await Promise.all([
+  const [sdNow, restNow, sdPrev, restPrev] = Promise.all([
     fetchRows(current, SD_ONLY),
     fetchRows(current, REST),
     fetchRows(prev, SD_ONLY),
@@ -1481,7 +1332,7 @@ async function refreshAll(){
 
   updateHRRRLayers();
   updateSurfaceLayer();
-  await loadAlerts();
+  loadAlerts();
 }
 
 refreshAll().catch(err => {
