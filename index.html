@@ -219,17 +219,54 @@ function updateSurfaceLayer(){
 // ------------------------------------------------------------
 // Observed Composite Radar (IEM USCOMP PNG frames you generate in Colab)
 // Repo layout expected:
-//   radar_frames/radar_20180414_0635Z.png
-//   radar_frames/radar_bounds.json    (created by Colab; contains {south,west,north,east})
+//   radar_files/radar_20180414_0635Z.png
+//   radar_files/radar_bounds.json    (created by Colab; contains {south,west,north,east})
 // ------------------------------------------------------------
 const TRANSPARENT_PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 let radarBounds = L.latLngBounds([[24.0, -126.0],[50.0, -66.0]]); // fallback; Colab will generate exact bounds
 const radarObservedLayer = L.imageOverlay(TRANSPARENT_PX, radarBounds, {opacity:0.6, interactive:false, className:'obs-radar'});
 
-// Load exact bounds once (non-blocking). Put radar_bounds.json in radar_frames/
+
+// Optional: if you upload radar_files/radar_manifest.json (created in Colab), we use it to
+// (a) know which frames exist, (b) clamp to available range, and (c) avoid 404 spam.
+let radarManifest = null; // {times:["20180414_2100Z",...], min:"...", max:"...", step_min:15}
+
+async function loadRadarManifest(){
+  try{
+    const r = await fetch("./radar_files/radar_manifest.json", {cache:"no-store"});
+    if(!r.ok) return;
+    radarManifest = await r.json();
+  }catch(e){}
+}
+
+function clampToManifest(d){
+  if(!radarManifest || !radarManifest.times || radarManifest.times.length===0) return d;
+
+  const key = (dt) => dt.toISOString().replace(/[-:]/g,"").slice(0,13) + "Z"; // YYYYMMDDTHHMMZ-ish
+  // We'll snap by manifest step if provided, else 15.
+  const step = radarManifest.step_min || 15;
+
+  // clamp to range if min/max provided
+  if(radarManifest.min && radarManifest.max){
+    const min = new Date(radarManifest.min);
+    const max = new Date(radarManifest.max);
+    if(d < min) d = new Date(min.getTime());
+    if(d > max) d = new Date(max.getTime());
+  }
+
+  // snap minutes down to step
+  const t = new Date(d.getTime());
+  const m = t.getUTCMinutes();
+  const snapped = Math.floor(m/step)*step;
+  t.setUTCMinutes(snapped,0,0);
+
+  return t;
+}
+// Load exact bounds once (non-blocking). Put radar_bounds.json in radar_files/
 (async () => {
   try{
-    const resp = await fetch("./radar_frames/radar_bounds.json", {cache:"no-store"});
+    await loadRadarManifest();
+    const resp = await fetch("./radar_files/radar_bounds.json", {cache:"no-store"});
     if (!resp.ok) return;
     const b = await resp.json();
     if (b && isFinite(b.south) && isFinite(b.west) && isFinite(b.north) && isFinite(b.east)){
@@ -240,15 +277,16 @@ const radarObservedLayer = L.imageOverlay(TRANSPARENT_PX, radarBounds, {opacity:
 })();
 
 function radarObservedFilename(d){
+  d = clampToManifest(d);
   const Y = d.getUTCFullYear();
   const M = String(d.getUTCMonth()+1).padStart(2,"0");
   const D = String(d.getUTCDate()).padStart(2,"0");
   const H = String(d.getUTCHours()).padStart(2,"0");
-  const m = String(d.getUTCMinutes()).padStart(2,"0");
-  return `radar_${Y}${M}${D}_${H}${m}Z.png`;
+  const mnt = String(d.getUTCMinutes()).padStart(2,"0");
+  return `radar_${Y}${M}${D}_${H}${mnt}Z.png`;
 }
 function radarObservedUrl(d){
-  return `./radar_frames/${radarObservedFilename(d)}`;
+  return `./radar_files/${radarObservedFilename(d)}`;
 }
 function snapToMinutes(d, stepMin){
   const t = d.getTime();
