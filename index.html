@@ -121,6 +121,11 @@
 
 /* Make observed radar a bit less 'dark' */
 .obs-radar { filter: brightness(1.15) contrast(1.05); }
+
+  /* Keep the layer toggle box below the banner */
+  .leaflet-top.leaflet-right { top: 64px; }
+  .leaflet-control-layers { z-index: 100001; }
+
 </style>
 </head>
 
@@ -279,7 +284,7 @@ function snapToStepUTC(d, stepMin){
   const WORLD_NORTH = 50.0;
 
   let obsRadarBounds = null;   // Leaflet LatLngBounds once known
-  let radarObservedLayer = L.imageOverlay('', [[24, -126], [50, -66]], {opacity: 0.65, className: 'obs-radar', interactive:false});
+  let radarObservedLayer = null;
   let _obsBoundsLoadingPromise = null;
 
   function pad2(n){ return String(n).padStart(2,"0"); }
@@ -407,29 +412,28 @@ function snapToStepUTC(d, stepMin){
     });
   }
 
-  async async function ensureObservedRadarLayer() {
-  // Load radar bounds once (generated from the world file) so the image overlay aligns correctly.
-  if (obsRadarBounds) return;
-  try {
-    const resp = await fetch('./radar_frames/radar_bounds.json', { cache: 'no-store' });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const j = await resp.json();
-    // Accept either {south,west,north,east} or [[south,west],[north,east]]
-    if (Array.isArray(j) && j.length === 2) {
-      obsRadarBounds = L.latLngBounds(j[0], j[1]);
-    } else if (j && typeof j === 'object') {
-      obsRadarBounds = L.latLngBounds([j.south, j.west], [j.north, j.east]);
-    }
-    if (obsRadarBounds) radarObservedLayer.setBounds(obsRadarBounds);
-  } catch (e) {
-    console.warn('Could not load radar_frames/radar_bounds.json', e);
+  async function ensureObservedRadarLayer(){
+    if (radarObservedLayer) return radarObservedLayer;
+
+    // Try to establish bounds
+    obsRadarBounds = await loadObsRadarBounds();
+
+    // Create a placeholder layer; we will update URL immediately after
+    const dummyBounds = obsRadarBounds || L.latLngBounds([[23.0, -126.0],[50.0, -66.0]]);
+    radarObservedLayer = L.imageOverlay("", dummyBounds, {
+      opacity: 0.65,
+      className: "obs-radar",
+      interactive: false
+    });
+
+    // Add to layer control (later, in overlays map)
+    return radarObservedLayer;
   }
-}
 
-async function updateObservedRadar(){
-    if (!radarObservedLayer) await await ensureObservedRadarLayer();
+  async function updateObservedRadar(){
+    if (!radarObservedLayer) await ensureObservedRadarLayer();
 
-    const urls = obsRadarCandidateUrls(currentTime);
+    const urls = obsRadarCandidateUrls(current);
     const chosen = await firstExistingUrl(urls);
 
     if (!chosen){
@@ -748,8 +752,6 @@ const baseLayers = {}; // keep OSM as the only base layer (no base selector in t
 // Otherwise Leaflet will receive null layers and crash when it tries to call setZIndex().
 ensureHRRRLayers();
 
-ensureSurfaceLayer();
-
 const overlays = {
   "Temperature (°F)": tempLayer,
   "Dew Point (°F)": dewLayer,
@@ -760,7 +762,7 @@ const overlays = {
   "Pressure (trend)": presLayer,
   "Weather Codes": wxLayer,
   "Alerts (WWA)": alertsLayer,
-  "Surface Analysis (WPC)": surfaceLayer,
+  "Surface Analysis (WPC)": (ensureSurfaceLayer(), surfaceLayer),
   "Composite Radar (Observed)": radarObservedLayer,
   "Radar (HRRR REFD)": hrrrRefdLayer,
   "Precip Type (HRRR REFP)": hrrrRefpLayer,
