@@ -253,14 +253,26 @@ function snap3hrUTC(d){
   // Ensure radar matches your 3-hour timeline
   return snapToStepUTC(d, 180); // minutes
 }
-function localN0qUrl(d){
-  const t = snap3hrUTC(d);
-  const Y = t.getUTCFullYear();
-  const M = String(t.getUTCMonth()+1).padStart(2,"0");
-  const D = String(t.getUTCDate()).padStart(2,"0");
-  const H = String(t.getUTCHours()).padStart(2,"0");
-  // Files live in your repo: radar_files/n0q_YYYYMMDDHH00.png
-  return `radar_files/n0q_${Y}${M}${D}${H}00.png`;
+function obsRadarUrlCandidates(t){
+  // Candidates for observed composite radar PNG stored in repo under /radar_files/
+  // Supports either naming:
+  //   n0q_YYYYMMDDHHMM.png   (IEM GIS NEXRAD product)
+  //   radar_YYYYMMDD_HHMMZ.png  (your renamed frames)
+  const y = t.getUTCFullYear();
+  const mo = String(t.getUTCMonth()+1).padStart(2,'0');
+  const d  = String(t.getUTCDate()).padStart(2,'0');
+  const hh = String(t.getUTCHours()).padStart(2,'0');
+  const mm = String(t.getUTCMinutes()).padStart(2,'0'); // should be "00" for 3-hr timeline
+  const ymd = `${y}${mo}${d}`;
+  const hm  = `${hh}${mm}`;
+
+  return [
+    `radar_files/n0q_${ymd}${hm}.png`,
+    `radar_files/n0q_${ymd}${hm}Z.png`,
+    `radar_files/radar_${ymd}_${hm}Z.png`,
+    `radar_files/radar_${ymd}_${hm}.png`,
+    `radar_files/${ymd}_${hm}.png`
+  ];
 }
 
 // Placeholder bounds; will be updated from image dimensions on first load
@@ -281,31 +293,46 @@ radarObservedLayer.on("add", () => {
 
 function updateObservedRadar(){
   if (!map.hasLayer(radarObservedLayer)) return;
+  updateRadarObserved(obsRadarUrlCandidates(current));
+}
 
-  const url = localN0qUrl(current);
+function updateRadarObserved(urlOrUrls){
+  const urls = Array.isArray(urlOrUrls) ? urlOrUrls : [urlOrUrls];
 
-  // First time: load the image so we can compute exact bounds
-  if (!radarBoundsReady){
+  let i = 0;
+  const tryUrl = () => {
+    if (i >= urls.length){
+      statusEl.textContent = "Observed radar: no matching file found for this time. Check filenames in /radar_files/.";
+      return;
+    }
+    const url = urls[i++];
     const img = new Image();
+
     img.onload = () => {
-      radarBounds = boundsFromWorldFile(img.naturalWidth, img.naturalHeight);
-      radarObservedLayer.setBounds(radarBounds);
+      if (!radarBoundsReady){
+        radarBounds = boundsFromWorldFile(img.naturalWidth, img.naturalHeight);
+        radarObservedLayer.setBounds(radarBounds);
+        radarBoundsReady = true;
+      }
+
       radarObservedLayer.setUrl(url);
 
       const el = radarObservedLayer.getElement();
-      if (el) el.style.mixBlendMode = "screen";
+      if (el) {
+        // Helps the 'black background' problem without altering your source PNG
+        el.style.mixBlendMode = "screen";
+        el.style.filter = "brightness(1.15) contrast(1.05)";
+      }
 
-      radarBoundsReady = true;
+      statusEl.textContent = `Observed radar loaded: ${url}`;
     };
-    img.onerror = () => {
-      // Still try to show something even if sizing fails
-      radarObservedLayer.setUrl(url);
-    };
-    img.src = url;
-    return;
-  }
 
-  radarObservedLayer.setUrl(url);
+    img.onerror = () => tryUrl();
+
+    img.src = url + `?v=${Date.now()}`;
+  };
+
+  tryUrl();
 }
 
 
