@@ -121,6 +121,11 @@
 
 /* Make observed radar a bit less 'dark' */
 .obs-radar { filter: brightness(1.15) contrast(1.05); }
+
+  /* Keep the layer toggle box below the banner */
+  .leaflet-top.leaflet-right { top: 64px; }
+  .leaflet-control-layers { z-index: 100001; }
+
 </style>
 </head>
 
@@ -428,7 +433,7 @@ function snapToStepUTC(d, stepMin){
   async function updateObservedRadar(){
     if (!radarObservedLayer) await ensureObservedRadarLayer();
 
-    const urls = obsRadarCandidateUrls(currentTime);
+    const urls = obsRadarCandidateUrls(current);
     const chosen = await firstExistingUrl(urls);
 
     if (!chosen){
