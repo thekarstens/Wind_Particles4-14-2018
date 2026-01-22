@@ -93,11 +93,12 @@
 
     <div class="banner-controls" aria-label="Time controls">
       <button class="bbtn" id="bBackBtn" title="Back 3 hours">◀</button>
-      <div class="btime" id="bannerTimeLabel">2018-04-14 7 AM CST</div>
+      <div class="btime" id="bannerTimeLabel">Apr 14, 2018 7AM</div>
       <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
       <div class="bsep"></div>
       <button class="bbtn" id="zoomOutBtn" title="Zoom out">−</button>
       <button class="bbtn" id="zoomInBtn" title="Zoom in">+</button>
+      <div class="bzoom" id="bannerZoomLabel">Zoom: 6</div>
     </div>
 
     <div class="banner-legend" aria-label="Radar legend">
@@ -178,230 +179,24 @@
   // "Central time" label (forced) — we just subtract 5 hours and show CST
   // (Technically CDT for April, but your students don't need DST complexity here.)
   function formatCentralLabel(d){
-    // Convert UTC -> Central (CDT/CST simplification): use fixed -5 hours like our dataset labeling
-    var central = new Date(d.getTime() - 5*3600*1000);
-    var monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    var y = central.getUTCFullYear();
-    var mon = monthNames[central.getUTCMonth()];
-    var day = central.getUTCDate(); // no leading zero
-    var hr = central.getUTCHours();
-    var ampm = (hr>=12) ? "PM" : "AM";
-    var hr12 = hr%12; if(hr12===0) hr12=12;
-    return mon+" "+day+", "+y+" "+hr12+ampm;
-  }
-
-  // ---------- Map ----------
-  var map = L.map("map", { zoomControl:true }).setView([43.55, -96.73], 6);
-  document.getElementById("bannerZoomLabel").textContent = map.getZoom();
-
-  // Clean base map (no labels)
-  var base = L.tileLayer(
-    "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
-    { attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains:"abcd", maxZoom: 19 }
-  ).addTo(map);
-
-  // State boundaries / reference overlay (from leaflet-test-map12)
-  var stateOverlay = L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places_Alternate/MapServer/tile/{z}/{y}/{x}",
-    { opacity: 0.75, maxZoom: 19 }
-  ).addTo(map);
-
-  // Optional labels (kept on top to help students)
-  var labels = L.tileLayer(
-    "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
-    { attribution: "", subdomains:"abcd", maxZoom: 19, pane: "overlayPane" }
-  ).addTo(map);
-
-  // Town labels
-  function addTown(name, lat, lon){
-    L.marker([lat, lon], {
-      icon: L.divIcon({ className:"town-label", html: name, iconSize: null }),
-      interactive:false
-    }).addTo(map);
-  }
-  addTown("Sioux Falls", 43.55, -96.73);
-  addTown("Omaha", 41.2565, -95.9345);
-  addTown("Des Moines", 41.5868, -93.6250);
-  addTown("Minneapolis", 44.9778, -93.2650);
-  addTown("Kansas City", 39.0997, -94.5786);
-  addTown("St. Louis", 38.6270, -90.1994);
-
-  map.on("zoomend", function(){
-    document.getElementById("bannerZoomLabel").textContent = map.getZoom();
-  });
-
-  // ---------- Layers ----------
-  var obsRadarOverlay = null;
-  var obsRadarEnabled = true;
-
-  var alertsLayer = L.geoJSON(null, {
-    style: function(f){
-      const p = (f && f.properties) ? f.properties : {};
-      const ev = String(p.event || p.EVENT || p.headline || p.phenomena || "").toLowerCase();
-  // Start with alerts ON by default
-  map.addLayer(alertsLayer);
-      const phe = String(p.phenomena || p.PHENOM || "").toLowerCase();
-      const sig = String(p.significance || p.SIG || "").toLowerCase();
-      const key = ev || (phe && sig ? (phe + "." + sig) : phe || "");
-
-      // NWS-ish colors (simple + TV-friendly)
-      let stroke = "#333";
-      let fill = "#333";
-
-      const has = (s)=> key.indexOf(s) !== -1;
-
-      if (has("tornado") || phe==="to") { stroke = fill = "#e53935"; }
-      else if (has("severe thunderstorm") || phe==="sv") { stroke = fill = "#fdd835"; }
-      else if (has("flash flood") || phe==="ff") { stroke = fill = "#00c853"; }
-      else if (has("flood") || phe==="fl") { stroke = fill = "#00a152"; }
-      else if (has("blizzard") || phe==="bz") { stroke = fill = "#d81b60"; }
-      else if (has("winter storm") || phe==="ws") { stroke = fill = "#ff5aa5"; }
-      else if (has("ice storm") || phe==="is") { stroke = fill = "#ff80ab"; }
-      else if (has("winter weather") || phe==="ww") { stroke = fill = "#ad1457"; }
-      else if (has("high wind") || phe==="hw") { stroke = fill = "#ff6f00"; }
-      else if (has("wind advisory") || phe==="wi") { stroke = fill = "#ffd180"; }
-      else if (has("dense fog") || phe==="fg") { stroke = fill = "#90a4ae"; }
-      else if (has("red flag") || phe==="fw") { stroke = fill = "#c62828"; }
-
-      return { color: stroke, weight: 2, opacity: 0.9, fillColor: fill, fillOpacity: 0.25 };
-    },
-    onEachFeature: function(f, layer){
-      var props = f.properties || {};
-      var title = props.event || props.headline || props.phenomena || "Alert";
-      layer.bindPopup("<b>"+title+"</b>");
-    }
-  });
-  var alertsEnabled = true;
-
-  // Layer control (NO extra base layer picker)
-  var overlays = {};
-  overlays["Composite Radar (Observed)"] = L.layerGroup(); // placeholder group
-  overlays["Alerts (WWA)"] = alertsLayer;
-  overlays["State Lines"] = stateOverlay;
-
-  // We'll manage radar ourselves but still expose a checkbox
-  var lc = L.control.layers(null, overlays, { collapsed:false }).addTo(map);
-
-  // Remove any base-layer radio section if Leaflet created it empty
-  setTimeout(function(){
-    var el = document.querySelector(".leaflet-control-layers-base");
-    if (el) el.style.display = "none";
-  }, 50);
-
-  // Toggle handler for layer control checkboxes
-  map.on("overlayadd", function(e){
-    if (e.name === "Alerts (WWA)") { alertsEnabled = true; updateAll(); }
-    if (e.name === "Composite Radar (Observed)") { obsRadarEnabled = true; updateRadar(); }
-  });
-  map.on("overlayremove", function(e){
-    if (e.name === "Alerts (WWA)") { alertsEnabled = false; alertsLayer.clearLayers(); }
-    if (e.name === "Composite Radar (Observed)") { obsRadarEnabled = false; if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); } }
-  });
-
-  // Ensure radar checkbox starts ON
-  // Leaflet doesn't automatically check our placeholder group, so we force it:
-  (function forceRadarChecked(){
-    var inputs = document.querySelectorAll(".leaflet-control-layers-overlays input");
-    for (var i=0;i<inputs.length;i++){
-      var label = inputs[i].parentElement && inputs[i].parentElement.textContent || "";
-      if (label.indexOf("Composite Radar") !== -1){
-        inputs[i].checked = true;
-      }
-    }
-  })();
-
-  // ---------- Updaters ----------
-  function setStatus(s){ document.getElementById("status").textContent = s; }
-  function setTimeLabel(){
-    document.getElementById("bannerTimeLabel").textContent = formatCentralLabel(curZ);
-  }
-
-  function updateRadar(){
-    if (!obsRadarEnabled) return;
-    var url = radarUrlFor(curZ);
-
-    // Test-load the image before swapping overlay (avoids blank overlay on 404)
-    var img = new Image();
-    img.onload = function(){
-      if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); }
-      obsRadarOverlay = L.imageOverlay(url, RADAR_BOUNDS, { opacity: 0.70, interactive:false });
-      obsRadarOverlay.addTo(map);
-      setStatus("Radar: " + url);
-    };
-    img.onerror = function(){
-      setStatus("Radar missing: " + url + " (check /radar_frames/)");
-    };
-    img.src = url;
-  }
-
-  function updateAlerts(){
-    if (!alertsEnabled) return;
-    var url = alertsUrlFor(curZ);
-    fetch(url).then(function(r){
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    }).then(function(gj){
-      alertsLayer.clearLayers();
-      // Filter to the "big" products (keeps map cleaner for students)
-      try{
-        if(gj && gj.type==="FeatureCollection" && Array.isArray(gj.features)){
-          gj = Object.assign({}, gj, {features: gj.features.filter(function(f){
-            var ev = (f && f.properties && (f.properties.event || f.properties.headline || "")) || "";
-            ev = String(ev);
-            return (ev.includes("Warning") || ev.includes("Watch") || ev.includes("Advisory"));
-          })});
-        }
-      }catch(e){}
-      alertsLayer.addData(gj);
-      if (!map.hasLayer(alertsLayer)) alertsLayer.addTo(map);
-      setStatus("Alerts: " + url);
-    }).catch(function(err){
-      alertsLayer.clearLayers();
-      setStatus("Alerts missing: " + url);
-    });
-  }
-
-  function updateAll(){
-    setTimeLabel();
-    updateRadar();
-    updateAlerts();
-  }
-
-  // ---------- Time controls ----------
-  function clampTime(){
-    if (curZ < startZ) curZ = new Date(startZ.getTime());
-    if (curZ > endZ) curZ = new Date(endZ.getTime());
-  }
-
-  document.getElementById("backBtn").onclick = function(){
-    curZ = new Date(curZ.getTime() - STEP_HOURS*3600*1000);
-    clampTime(); updateAll();
-  };
-  document.getElementById("fwdBtn").onclick = function(){
-    curZ = new Date(curZ.getTime() + STEP_HOURS*3600*1000);
-    clampTime(); updateAll();
-  };
-
-  // Banner controls (mirror the panel controls)
-  const bBack = document.getElementById("bBackBtn");
-  const bFwd  = document.getElementById("bFwdBtn");
-  if (bBack) bBack.onclick = () => document.getElementById("backBtn").click();
-  if (bFwd)  bFwd.onclick  = () => document.getElementById("fwdBtn").click();
-
-  const zIn = document.getElementById("zoomInBtn");
-  const zOut = document.getElementById("zoomOutBtn");
-  if (zIn) zIn.onclick = () => map.zoomIn();
-  if (zOut) zOut.onclick = () => map.zoomOut();
-
-
-  // Initial
-  setTimeLabel();
-  // Add overlays based on default checkboxes
-  // Alerts starts OFF; radar starts ON.
-  updateAll();
-
-})();
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const m = months[d.getUTCMonth()];
+  const day = d.getUTCDate();
+  const yr = d.getUTCFullYear();
+  let hr = d.getUTCHours();
+  const ampm = (hr >= 12) ? "PM" : "AM";
+  hr = hr % 12; if (hr === 0) hr = 12;
+  return `${m} ${day}, ${yr} ${hr}${ampm}`;
+}
+)();
 </script>
 <img id="brandLogo" src="logo.png" alt="Logo">
 </body>
 </html>
+
+// State lines overlay (ArcGIS reference)
+const stateLines = L.tileLayer(
+  'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places_Alternate/MapServer/tile/{z}/{y}/{x}',
+  {opacity: 0.65}
+);
+stateLines.addTo(map);
