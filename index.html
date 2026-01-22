@@ -70,56 +70,18 @@
     font:800 11px/1 Arial, sans-serif;
     box-shadow: 0 1px 4px rgba(0,0,0,.15);
   }
-
-    /* Leaflet controls offset (below banner) */
-    .leaflet-top.leaflet-left { top: 70px; }
-    
-
-.legendBox{
-  background: rgba(255,255,255,0.92);
-  padding:10px 12px;
-  border-radius:12px;
-  box-shadow: 0 4px 18px rgba(0,0,0,0.18);
-  font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-}
-.legendTitle{ font-weight:800; margin-bottom:6px; }
-.legendBar{
-  width: 180px;
-  height: 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(0,0,0,0.25);
-  background: linear-gradient(90deg, #2ecc71 0%, #2ecc71 20%, #a3e635 35%, #facc15 55%, #fb923c 70%, #ef4444 85%, #b91c1c 100%);
-}
-.legendTicks{
-  display:flex;
-  justify-content:space-between;
-  margin-top:5px;
-  color:#222;
-  font-weight:700;
-}
-.legendNote{ margin-top:6px; color:#333; opacity:0.9; }
-
 </style>
 </head>
 
 <body>
 <div id="map"></div>
-<div id="banner" class="tvbanner">RADAR</div>
+<div id="banner" class="tvbanner">APR 2018 CASE STUDY</div>
 <img id="brandLogo" src="./logo.png" alt="Weather Workshops" />
 
 <div class="panel">
   <div style="font-size:14px;margin-bottom:6px">Radar + Alerts</div>
 
-  <div class="row">
-    <button class="btn" id="backBtn">◀ Time</button>
-    <div class="mono" id="timeLabel">2018-04-14 12Z</div>
-    <button class="btn" id="fwdBtn">Time ▶</button>
-  </div>
-
-  <div class="row">
-    <span class="tiny">Step:</span><span class="mono">3 hours</span>
-    <span style="opacity:.75;margin-left:auto">Zoom:</span><span class="mono" id="zoomLabel">6</span>
-  </div>
+  
 
   <div class="row">
     <span class="tiny" id="status">Loading…</span>
@@ -183,8 +145,9 @@
   }
 
   // ---------- Map ----------
-  var map = L.map("map", { zoomControl:true }).setView([43.55, -96.73], 6);
+  var map = L.map("map", { zoomControl:false }).setView([43.55, -96.73], 6);
   document.getElementById("zoomLabel").textContent = map.getZoom();
+  map.on("zoomend", function(){ document.getElementById("zoomLabel").textContent = map.getZoom(); });
 
   // Clean base map (no labels)
   var base = L.tileLayer(
@@ -214,6 +177,7 @@
 
   map.on("zoomend", function(){
     document.getElementById("zoomLabel").textContent = map.getZoom();
+  map.on("zoomend", function(){ document.getElementById("zoomLabel").textContent = map.getZoom(); });
   });
 
   // ---------- Layers ----------
@@ -222,23 +186,8 @@
 
   var alertsLayer = L.geoJSON(null, {
     style: function(f){
-      var props = (f && f.properties) ? f.properties : {};
-      var ev = (props.event || props.headline || props.phenomena || "").toString().toLowerCase();
-
-      // basic hazard color mapping (tweak anytime)
-      var fill = "#9e9e9e"; // default gray
-      if (ev.includes("tornado warning")) fill = "#d32f2f";
-      else if (ev.includes("severe thunderstorm warning")) fill = "#fbc02d";
-      else if (ev.includes("flash flood warning")) fill = "#43a047";
-      else if (ev.includes("flood warning")) fill = "#2e7d32";
-      else if (ev.includes("blizzard warning")) fill = "#8e24aa";
-      else if (ev.includes("winter storm warning")) fill = "#1976d2";
-      else if (ev.includes("winter weather advisory")) fill = "#64b5f6";
-      else if (ev.includes("wind advisory")) fill = "#ff9800";
-      else if (ev.includes("high wind warning")) fill = "#ef6c00";
-      else if (ev.includes("ice storm warning")) fill = "#6a1b9a";
-
-      return { color:"#222", weight:2, fillColor: fill, fillOpacity:0.25 };
+      // very simple default; your earlier version had per-hazard colors
+      return { color:"#333", weight:2, fillOpacity:0.10 };
     },
     onEachFeature: function(f, layer){
       var props = f.properties || {};
@@ -346,6 +295,11 @@
     clampTime(); updateAll();
   };
 
+
+  // Zoom buttons in banner
+  document.getElementById("zoomInBtn").onclick = function(){ map.zoomIn(); };
+  document.getElementById("zoomOutBtn").onclick = function(){ map.zoomOut(); };
+
   // Initial
   setTimeLabel();
   // Add overlays based on default checkboxes
@@ -355,21 +309,4 @@
 })();
 </script>
 </body>
-</html
-  // Radar legend (simple qualitative bar)
-  var radarLegend = L.control({position:'bottomright'});
-  radarLegend.onAdd = function(){
-    var div = L.DomUtil.create('div','legendBox');
-    div.innerHTML = `
-      <div class="legendTitle">Radar (qualitative)</div>
-      <div class="legendBar"></div>
-      <div class="legendTicks">
-        <span>light</span><span>moderate</span><span>heavy</span>
-      </div>
-      <div class="legendNote">Greens → yellows → reds (approx).</div>
-    `;
-    return div;
-  };
-  radarLegend.addTo(map);
-
->
+</html>
