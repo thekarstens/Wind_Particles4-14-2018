@@ -59,11 +59,49 @@
 
 /* Observed radar styling */
 .obs-radar { filter: brightness(1.22) contrast(1.08) saturate(1.05); mix-blend-mode: multiply; }
+
+  /* TV banner (bigger) */
+  .tvbanner{
+    position:absolute; top:0; left:0; right:0;
+    z-index:100000;
+    background:rgba(11,28,45,0.92);
+    color:#fff;
+    font:900 22px/1.2 Arial, sans-serif;
+    letter-spacing:0.6px;
+    padding:14px 18px;
+    border-bottom:2px solid rgba(255,255,255,0.12);
+    text-transform:uppercase;
+    pointer-events:none;
+    display:none;
+  }
+  /* Branding logo (bottom-right) */
+  #brandLogo{
+    position:absolute;
+    bottom:12px;
+    right:12px;
+    z-index:100000;
+    width:140px;
+    max-width:26vw;
+    height:auto;
+    opacity:0.95;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+    pointer-events:none;
+    display:block;
+  }
+  /* Push the upper-left panel down below banner */
+  .panel{ top:76px !important; }
+  /* Push layer control down below banner */
+  .leaflet-top.leaflet-right{ top:76px; }
+  .leaflet-control-layers{ margin-top:0px; }
+
 </style>
 </head>
 
 <body>
 <div id="map"></div>
+<div id="banner" class="tvbanner"></div>
+<img id="brandLogo" src="logo.png" alt="Weather Workshops" />
+
 
 <div class="panel">
   <div style="font-size:13px;margin-bottom:6px">Apr 2018 Case Study</div>
@@ -71,7 +109,7 @@
   <!-- Time controls for METAR + Alerts -->
   <div class="row">
     <button class="btn" id="backBtn">◀ Time</button>
-    <div class="mono" id="timeLabel">2018-04-14 15Z</div>
+    <div class="mono" id="timeLabel">2018-04-14 9 AM CST</div>
     <button class="btn" id="fwdBtn">Time ▶</button>
   </div>
 
@@ -179,12 +217,17 @@ function snapCurrentToAlertsTimeline(){
 }
 
 
-function fmtZ(d){
-  const Y = d.getUTCFullYear();
-  const M = String(d.getUTCMonth()+1).padStart(2,"0");
-  const D = String(d.getUTCDate()).padStart(2,"0");
-  const H = String(d.getUTCHours()).padStart(2,"0");
-  return `${Y}-${M}-${D} ${H}Z`;
+function fmtCST(dt){
+  // Convert UTC -> Central Standard Time (UTC-6) for display.
+  const cst = new Date(dt.getTime() - 6*3600*1000);
+  const y = cst.getUTCFullYear();
+  const mo = String(cst.getUTCMonth()+1).padStart(2,"0");
+  const da = String(cst.getUTCDate()).padStart(2,"0");
+  let hr = cst.getUTCHours();
+  const ampm = (hr >= 12) ? "PM" : "AM";
+  hr = hr % 12; if (hr === 0) hr = 12;
+  return `${y}-${mo}-${da} ${hr} ${ampm} CST`;
+}-${M}-${D} ${H}Z`;
 }
 function toISOZ(d){
   const Y = d.getUTCFullYear();
@@ -193,7 +236,7 @@ function toISOZ(d){
   const H = String(d.getUTCHours()).padStart(2,"0");
   return `${Y}-${M}-${D}T${H}:00:00Z`;
 }
-function updateTimeLabel(){ timeLabelEl.textContent = fmtZ(current); }
+function updateTimeLabel(){ timeLabelEl.textContent = fmtCST(current); }
 updateTimeLabel();
 
 // Try to load alerts timeline index (if present in repo)
@@ -254,8 +297,7 @@ const alertsLayer = L.geoJSON(null);
 const particlesToggle = L.layerGroup();
 let particlesLayer = null;
 
-L.control.layers(
-  { "OpenStreetMap": osm },
+L.control.layers(null,
   {
     "Temperature (°F)": tempLayer,
     "Dew Point (°F)": dewLayer,
@@ -266,6 +308,8 @@ L.control.layers(
     "Pressure (trend)": presLayer,
     "Weather Codes": wxLayer,
     "Alerts (WWA)": alertsLayer,
+    "Composite Radar (Observed)": obsRadarToggle,
+    "MODIS True Color": modis,
     "Daily wind particles": particlesToggle
   },
   { collapsed:false }
@@ -304,11 +348,13 @@ class CollisionIndex {
 }
 
 function minSepForZoom(z){
-  if (z <= 4) return 54;
-  if (z === 5) return 46;
-  if (z === 6) return 38;
-  if (z === 7) return 32;
-  return 0; // z >= 8 show all
+  // Larger separation at low zoom to prevent overlapping circles.
+  if (z <= 4) return 72;
+  if (z === 5) return 58;
+  if (z === 6) return 44;
+  if (z === 7) return 30;
+  if (z === 8) return 18;
+  return 0; // z >= 9 show all
 }
 function allowByCollision(index, lat, lon, minSepPx){
   if (minSepPx <= 0) return true;
@@ -839,6 +885,8 @@ async function refreshParticlesIfOn(){
 map.on("overlayadd", async (e) => {
   if (e.layer === particlesToggle) await refreshParticlesIfOn();
   if (e.layer === alertsLayer) await loadAlerts();
+  try { await syncObsRadar(); } catch(e){ console.warn(e); }
+  try { updateBanner(); } catch(e){}
 });
 map.on("overlayremove", (e) => {
   if (e.layer === particlesToggle && particlesLayer){
