@@ -247,8 +247,32 @@
 
   var alertsLayer = L.geoJSON(null, {
     style: function(f){
-      // very simple default; your earlier version had per-hazard colors
-      return { color:"#333", weight:2, fillOpacity:0.10 };
+      const p = (f && f.properties) ? f.properties : {};
+      const ev = String(p.event || p.EVENT || p.headline || p.phenomena || "").toLowerCase();
+      const phe = String(p.phenomena || p.PHENOM || "").toLowerCase();
+      const sig = String(p.significance || p.SIG || "").toLowerCase();
+      const key = ev || (phe && sig ? (phe + "." + sig) : phe || "");
+
+      // NWS-ish colors (simple + TV-friendly)
+      let stroke = "#333";
+      let fill = "#333";
+
+      const has = (s)=> key.indexOf(s) !== -1;
+
+      if (has("tornado") || phe==="to") { stroke = fill = "#e53935"; }
+      else if (has("severe thunderstorm") || phe==="sv") { stroke = fill = "#fdd835"; }
+      else if (has("flash flood") || phe==="ff") { stroke = fill = "#00c853"; }
+      else if (has("flood") || phe==="fl") { stroke = fill = "#00a152"; }
+      else if (has("blizzard") || phe==="bz") { stroke = fill = "#d81b60"; }
+      else if (has("winter storm") || phe==="ws") { stroke = fill = "#ff5aa5"; }
+      else if (has("ice storm") || phe==="is") { stroke = fill = "#ff80ab"; }
+      else if (has("winter weather") || phe==="ww") { stroke = fill = "#ad1457"; }
+      else if (has("high wind") || phe==="hw") { stroke = fill = "#ff6f00"; }
+      else if (has("wind advisory") || phe==="wi") { stroke = fill = "#ffd180"; }
+      else if (has("dense fog") || phe==="fg") { stroke = fill = "#90a4ae"; }
+      else if (has("red flag") || phe==="fw") { stroke = fill = "#c62828"; }
+
+      return { color: stroke, weight: 2, opacity: 0.9, fillColor: fill, fillOpacity: 0.25 };
     },
     onEachFeature: function(f, layer){
       var props = f.properties || {};
