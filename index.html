@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Apr 2018 Case Study</title>
+<title>Apr 2018 Case Study – METAR + Wind Arrows + Daily Particles + Alerts</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Local Leaflet in your repo -->
+<link rel="stylesheet" href="./leaflet.css"/>
+<script src="./leaflet.js"></script>
 
-<!-- Leaflet Velocity -->
+<!-- Leaflet Velocity (WORKING CDN) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet-velocity@2.1.4/dist/leaflet-velocity.css"/>
 <script src="https://unpkg.com/leaflet-velocity@2.1.4/dist/leaflet-velocity.js"></script>
 
@@ -16,29 +17,14 @@
   html, body { height:100%; margin:0; }
   #map { height:100%; background:#fff; }
 
-  /* Banner styled to match Weather Workshops vibe (navy + orange accent) */
-  #banner{
-    position:absolute; top:0; left:0; right:0;
-    z-index:99999;
-    background:rgba(11,28,45,0.94);
-    color:#fff;
-    font:800 18px/1.15 Arial, sans-serif;
-    letter-spacing:0.6px;
-    padding:10px 16px 12px 16px;
-    border-bottom:3px solid rgba(245,156,38,0.95);
-    text-transform:uppercase;
-    pointer-events:none;
-  }
-
   .panel{
-    position:absolute; top:58px; left:10px; z-index:9999;
+    position:absolute; top:10px; left:10px; z-index:9999;
     background:rgba(255,255,255,0.95);
     border:1px solid #ccc; border-radius:12px;
     padding:10px;
     font:600 12px/1.2 Arial, sans-serif;
     box-shadow: 0 2px 10px rgba(0,0,0,.10);
     min-width: 330px;
-    max-width: 360px;
   }
   .row{ display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
   .btn{
@@ -47,86 +33,46 @@
   }
   .btn:active{ transform: translateY(1px); }
   .mono{ font-family: ui-monospace, Menlo, Consolas, monospace; font-weight:800; }
-  .tiny { font:600 11px/1.2 Arial, sans-serif; opacity:.78; }
 
-  #brandLogo{
-    position:absolute;
-    bottom:10px;
-    right:10px;
-    z-index:100000;
-    width:120px;
-    max-width:22vw;
-    height:auto;
-    opacity:0.95;
-    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
-    pointer-events:none;
-  }
-
-  /* Legend */
-  #legend{
-    position:absolute; left:14px; bottom:18px; z-index:9999;
-    background:rgba(255,255,255,0.95);
-    border:1px solid #ccc; border-radius:12px;
-    padding:10px 12px;
-    font:700 12px/1.25 Arial, sans-serif;
-    min-width:240px;
-    box-shadow: 0 2px 10px rgba(0,0,0,.10);
-    display:none;
-  }
-  #legend .title{ font-size:12px; margin-bottom:6px; }
-  #legend .bar{ height:10px; border-radius:6px; border:1px solid #333; margin:6px 0; }
-  #legend .ticks{ display:flex; justify-content:space-between; font:700 11px/1.2 Arial, sans-serif; opacity:0.85; }
-
-  /* METAR circle marker look */
-  .metarDot{
+  .dot{
     border-radius:50%;
-    border:2px solid rgba(20,20,20,0.9);
-    display:flex; align-items:center; justify-content:center;
-    font:800 12px/1 Arial, sans-serif; color:#111;
+    border:2px solid #333;
+    display:flex;align-items:center;justify-content:center;
+    font:800 12px/1 Arial, sans-serif;color:#111;
     box-shadow: 0 1px 3px rgba(0,0,0,.25);
     user-select:none;
-    background:#ddd;
   }
 
-  /* Wind arrow */
-  .windArrow{
-    width:0; height:0;
-    border-left:7px solid transparent;
-    border-right:7px solid transparent;
-    border-bottom:16px solid rgba(0,0,0,0.75);
-    transform-origin: 50% 85%;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+  .swatch {
+    display:inline-block;
+    width:12px; height:12px;
+    border:1px solid #333;
+    border-radius:2px;
+    vertical-align:middle;
+    margin-right:6px;
   }
 
-  /* Make observed radar less dark + knock down black pixels a bit */
-  .obs-radar { filter: brightness(1.25) contrast(1.10) saturate(1.10); }
-
-  /* Keep layer control readable */
-  .leaflet-control-layers-expanded{
-    font: 700 12px/1.25 Arial, sans-serif;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,.12);
+  .tiny {
+    font:600 11px/1.2 Arial, sans-serif;
+    opacity:.78;
   }
 </style>
 </head>
 
 <body>
 <div id="map"></div>
-<div id="banner">APRIL 2018 CASE STUDY</div>
-<div id="legend"></div>
-
-<!-- Put your logo file at repo root as logo.png (or change src below) -->
-<img id="brandLogo" src="./logo.png" alt="Weather Workshops"/>
 
 <div class="panel">
   <div style="font-size:13px;margin-bottom:6px">Apr 2018 Case Study</div>
 
+  <!-- Time controls for METAR + Alerts -->
   <div class="row">
     <button class="btn" id="backBtn">◀ Time</button>
     <div class="mono" id="timeLabel">2018-04-14 15Z</div>
     <button class="btn" id="fwdBtn">Time ▶</button>
   </div>
 
+  <!-- Day controls for PARTICLES ONLY -->
   <div class="row">
     <span class="tiny">Particles day:</span>
     <button class="btn" id="dayBackBtn">◀ Apr 13</button>
@@ -151,488 +97,881 @@
 </div>
 
 <script>
-/* ======================
-   Time model (3-hour steps)
-   ====================== */
-var TIMES = [
-  "2018-04-14 12Z",
-  "2018-04-14 15Z",
-  "2018-04-14 18Z",
-  "2018-04-14 21Z"
-];
-var timeIndex = 1; // start at 15Z
+/* ------------------------------------------------------------
+   1) Map
+------------------------------------------------------------ */
+const map = L.map("map", { zoomControl:true }).setView([44.2, -96.5], 6);
 
-function ymdhmFromLabel(lbl){
-  // "2018-04-14 15Z" -> {ymd:"20180414", hm:"1500", z:"15"}
-  var parts = lbl.split(" ");
-  var ymd = parts[0].replaceAll("-","");
-  var z = parts[1].replace("Z","");
-  var hm = z + "00";
-  return {ymd: ymd, hm: hm, z: z};
+const base = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd',
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+}).addTo(map);
+
+map.attributionControl.setPrefix(false);
+
+const statusEl    = document.getElementById("status");
+const timeLabelEl = document.getElementById("timeLabel");
+const dayLabelEl  = document.getElementById("dayLabel");
+const zoomLabelEl = document.getElementById("zoomLabel");
+
+function setStatus(msg){ statusEl.textContent = msg; }
+
+map.on("zoomend", ()=>zoomLabelEl.textContent = String(map.getZoom()));
+zoomLabelEl.textContent = String(map.getZoom());
+
+/* ------------------------------------------------------------
+   2) Time controls (METAR + Alerts)
+------------------------------------------------------------ */
+let current = new Date(Date.UTC(2018, 3, 14, 15, 0, 0)); // default (will snap to timeline)
+const stepHours = 3;
+
+// Alerts timeline index (optional, but recommended)
+let ALERTS_TIMELINE = null; // array of {t, file, count}
+let ALERTS_MIN = null;
+let ALERTS_MAX = null;
+
+function parseISOZ(s){
+  // '2018-04-12T00:00:00Z' -> Date
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
 }
 
-function setStatus(msg){ document.getElementById("status").textContent = msg; }
-function setBanner(msg){ document.getElementById("banner").textContent = msg; }
-function setTimeLabel(){ document.getElementById("timeLabel").textContent = TIMES[timeIndex]; }
+async function loadAlertsTimelineIndex(){
+  try {
+    const r = await fetch('./timeline_index.json', { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const idx = await r.json();
+    if (!Array.isArray(idx) || !idx.length) throw new Error('empty index');
+    ALERTS_TIMELINE = idx
+      .map(x => ({...x, _d: parseISOZ(x.t)}))
+      .filter(x => x._d);
+    ALERTS_TIMELINE.sort((a,b)=>a._d-b._d);
+    ALERTS_MIN = ALERTS_TIMELINE[0]._d;
+    ALERTS_MAX = ALERTS_TIMELINE[ALERTS_TIMELINE.length-1]._d;
+  } catch(e){
+    // Not fatal: we'll fall back to the old per-hour filenames
+    console.warn('No timeline_index.json found or unreadable:', e.message);
+    ALERTS_TIMELINE = null;
+    ALERTS_MIN = null;
+    ALERTS_MAX = null;
+  }
+}
 
-/* ======================
-   Map base (clean + blue water)
-   ====================== */
-var map = L.map("map", { preferCanvas:true }).setView([43.55, -96.73], 6);
+function snapCurrentToAlertsTimeline(){
+  if (!ALERTS_TIMELINE || !ALERTS_TIMELINE.length) return null;
+  // clamp
+  if (current < ALERTS_MIN) current = new Date(ALERTS_MIN.getTime());
+  if (current > ALERTS_MAX) current = new Date(ALERTS_MAX.getTime());
+  // nearest
+  let best = ALERTS_TIMELINE[0];
+  let bestDt = Math.abs(current - best._d);
+  for (let i=1;i<ALERTS_TIMELINE.length;i++){
+    const it = ALERTS_TIMELINE[i];
+    const dt = Math.abs(current - it._d);
+    if (dt < bestDt){ best = it; bestDt = dt; }
+  }
+  // snap label/time to the actual frame time to avoid confusing 'out of range' times
+  current = new Date(best._d.getTime());
+  return best;
+}
 
-var cartoVoyager = L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-  { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors &copy; CARTO" }
+
+function fmtZ(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `${Y}-${M}-${D} ${H}Z`;
+}
+function toISOZ(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `${Y}-${M}-${D}T${H}:00:00Z`;
+}
+function updateTimeLabel(){ timeLabelEl.textContent = fmtZ(current); }
+updateTimeLabel();
+
+// Try to load alerts timeline index (if present in repo)
+loadAlertsTimelineIndex().then(()=>{
+  snapCurrentToAlertsTimeline();
+  updateTimeLabel();
+});
+
+document.getElementById("backBtn").onclick = async () => {
+  current = new Date(current.getTime() - stepHours*3600*1000);
+  snapCurrentToAlertsTimeline();
+  updateTimeLabel();
+  await refreshAll();
+};
+document.getElementById("fwdBtn").onclick = async () => {
+  current = new Date(current.getTime() + stepHours*3600*1000);
+  snapCurrentToAlertsTimeline();
+  updateTimeLabel();
+  await refreshAll();
+};
+
+/* ------------------------------------------------------------
+   3) Day controls (Particles only: Apr 13/14/15)
+------------------------------------------------------------ */
+let particleDay = 14; // 13, 14, 15
+function updateDayLabel(){
+  dayLabelEl.textContent = (particleDay === 13) ? "Apr 13" : (particleDay === 15) ? "Apr 15" : "Apr 14";
+}
+updateDayLabel();
+
+document.getElementById("dayBackBtn").onclick = async () => {
+  particleDay = Math.max(13, particleDay - 1);
+  updateDayLabel();
+  await refreshParticlesIfOn();
+};
+document.getElementById("dayFwdBtn").onclick = async () => {
+  particleDay = Math.min(15, particleDay + 1);
+  updateDayLabel();
+  await refreshParticlesIfOn();
+};
+
+/* ------------------------------------------------------------
+   4) Layers
+------------------------------------------------------------ */
+const tempLayer = L.layerGroup().addTo(map);
+const dewLayer  = L.layerGroup();
+const windNumLayer = L.layerGroup();
+const windArrowLayer = L.layerGroup();
+const gustLayer = L.layerGroup();
+const visLayer  = L.layerGroup();
+const presLayer = L.layerGroup();
+const wxLayer   = L.layerGroup();
+
+// Alerts
+const alertsLayer = L.geoJSON(null);
+
+// Particles: placeholder for checkbox + actual velocity layer
+const particlesToggle = L.layerGroup();
+let particlesLayer = null;
+
+L.control.layers(
+  { "Basemap": base },
+  {
+    "Temperature (°F)": tempLayer,
+    "Dew Point (°F)": dewLayer,
+    "Wind Speed (mph)": windLayer,
+    "Wind Gusts (mph)": gustLayer,
+    "Pressure (trend)": presLayer,
+    "Visibility (mi)": visLayer,
+    "Weather Codes": wxLayer,
+    "Wind Arrows": arrowLayer,
+    "Alerts (WWA)": alertsLayer,
+    "MODIS True Color (Terra)": modisLayer,
+    "Composite Radar (Observed)": radarObsGroup,
+    "Daily wind particles": particlesLayer
+  },
+  { collapsed: false }
 ).addTo(map);
 
-/* ======================
-   Layer groups
-   ====================== */
-var metarLayer = L.layerGroup();
-var windArrowLayer = L.layerGroup();
-var alertsLayer = L.geoJSON(null, {interactive:true});
-var obsRadarLayer = null;  // will be ImageOverlay
-var hrrrReflLayer = null;  // optional / placeholder
-var precipTypeLayer = null; // optional / placeholder
-
-/* Layer control */
-var overlays = {
-  "Temperature (°F)": metarLayer,
-  "Wind Arrows": windArrowLayer,
-  "Alerts (WWA)": alertsLayer,
-  "Composite Radar (Observed)": L.layerGroup() // placeholder; we replace on refresh
-};
-var layerCtl = L.control.layers({"Base (clean)": cartoVoyager}, overlays, {collapsed:false}).addTo(map);
-
-/* Keep a handle to the observed radar checkbox group */
-var obsRadarGroup = overlays["Composite Radar (Observed)"];
-
-/* ======================
-   Observed Radar (3-hour n0q PNGs you uploaded)
-   Folder: /radar_frames/
-   Files: n0q_201804141200.png, n0q_201804141500.png, n0q_201804141800.png, n0q_201804142100.png
-   Bounds: /radar_frames/radar_bounds.json (optional). If missing, we use world-file bounds.
-   ====================== */
-var WORLD_BOUNDS = [[24.0, -126.0],[50.0, -66.0]]; // [southWest],[northEast]
-var radarBounds = WORLD_BOUNDS;
-
-function loadRadarBounds(cb){
-  fetch("./radar_frames/radar_bounds.json", {cache:"no-store"})
-    .then(function(r){ if(!r.ok) throw new Error("bounds http " + r.status); return r.json(); })
-    .then(function(j){
-      if(j && j.southWest && j.northEast){
-        radarBounds = [[j.southWest.lat, j.southWest.lng],[j.northEast.lat, j.northEast.lng]];
+/* ------------------------------------------------------------
+   5) Collision thinning (drop stations if overlapping)
+------------------------------------------------------------ */
+class CollisionIndex {
+  constructor(cellSizePx){
+    this.cell = cellSizePx;
+    this.grid = new Map();
+  }
+  _key(cx, cy){ return `${cx},${cy}`; }
+  _cellOf(p){ return [Math.floor(p.x / this.cell), Math.floor(p.y / this.cell)]; }
+  canPlace(p, minSepPx){
+    const [cx, cy] = this._cellOf(p);
+    const r2 = minSepPx * minSepPx;
+    for (let dx=-1; dx<=1; dx++){
+      for (let dy=-1; dy<=1; dy++){
+        const key = this._key(cx+dx, cy+dy);
+        const arr = this.grid.get(key);
+        if (!arr) continue;
+        for (const q of arr){
+          const ddx = p.x - q.x;
+          const ddy = p.y - q.y;
+          if ((ddx*ddx + ddy*ddy) < r2) return false;
+        }
       }
-      cb();
-    })
-    .catch(function(){
-      radarBounds = WORLD_BOUNDS;
-      cb();
-    });
+    }
+    const key = this._key(cx, cy);
+    if (!this.grid.has(key)) this.grid.set(key, []);
+    this.grid.get(key).push({x:p.x, y:p.y});
+    return true;
+  }
 }
 
-function makeObsRadarUrl(){
-  var t = ymdhmFromLabel(TIMES[timeIndex]);
-  return "./radar_frames/n0q_" + t.ymd + t.hm + ".png";
+function minSepForZoom(z){
+  if (z <= 4) return 54;
+  if (z === 5) return 46;
+  if (z === 6) return 44;
+  if (z === 7) return 36;
+  return 0; // z >= 8 show all
+}
+function allowByCollision(index, lat, lon, minSepPx){
+  if (minSepPx <= 0) return true;
+  const p = map.latLngToLayerPoint([lat, lon]);
+  return index.canPlace(p, minSepPx);
 }
 
-function refreshObsRadar(){
-  // Remove previous overlay
-  if(obsRadarLayer){
-    try{ map.removeLayer(obsRadarLayer); }catch(e){}
-    obsRadarLayer = null;
-    obsRadarGroup.clearLayers();
+/* ------------------------------------------------------------
+   6) Color ramps
+------------------------------------------------------------ */
+function piecewiseColor(x, stops){
+  if (x == null || !Number.isFinite(x)) return "rgb(255,255,255)";
+  if (x <= stops[0].v) return `rgb(${stops[0].c.join(",")})`;
+  if (x >= stops[stops.length-1].v) return `rgb(${stops[stops.length-1].c.join(",")})`;
+  for (let i=0; i<stops.length-1; i++){
+    const a = stops[i], b = stops[i+1];
+    if (x >= a.v && x <= b.v){
+      const k = (x - a.v) / (b.v - a.v);
+      const r = Math.round(a.c[0] + (b.c[0]-a.c[0]) * k);
+      const g = Math.round(a.c[1] + (b.c[1]-a.c[1]) * k);
+      const bb= Math.round(a.c[2] + (b.c[2]-a.c[2]) * k);
+      return `rgb(${r},${g},${bb})`;
+    }
   }
-
-  // Only draw if layer is enabled
-  if(!map.hasLayer(obsRadarGroup)){ return; }
-
-  var url = makeObsRadarUrl();
-
-  // Probe existence (avoids noisy console 404)
-  fetch(url, {method:"HEAD", cache:"no-store"})
-    .then(function(r){
-      if(!r.ok){
-        setStatus("Observed radar: no matching file for this time. (Expected: " + url + ")");
-        return;
-      }
-      obsRadarLayer = L.imageOverlay(url, radarBounds, {opacity:0.72, className:"obs-radar"});
-      obsRadarGroup.addLayer(obsRadarLayer);
-      obsRadarLayer.addTo(map);
-      setStatus("Observed radar loaded: " + url);
-    })
-    .catch(function(){
-      setStatus("Observed radar: could not load " + url);
-    });
-}
-
-/* When user toggles Composite Radar on/off */
-map.on("overlayadd", function(e){
-  if(e.layer === obsRadarGroup){
-    loadRadarBounds(refreshObsRadar);
-    setBanner("COMPOSITE RADAR (OBS) — " + TIMES[timeIndex]);
-  }
-});
-map.on("overlayremove", function(e){
-  if(e.layer === obsRadarGroup){
-    if(obsRadarLayer){ try{ map.removeLayer(obsRadarLayer);}catch(err){} obsRadarLayer=null; }
-    obsRadarGroup.clearLayers();
-    setBanner("APRIL 2018 CASE STUDY");
-  }
-});
-
-/* ======================
-   METAR / ASOS plotting (temperature + wind arrows)
-   - Clean, not cluttered: we thin points when zoomed out.
-   - Always include Sioux Falls area station if it's inside map bounds.
-   ====================== */
-
-var METAR_BOX = { // Midwest focus; widen later if you want
-  south: 35.0, north: 49.5,
-  west: -104.5, east: -84.5
-};
-
-function asosUrl(){
-  // IEM ASOS request; 3-hour window around the selected time (keeps file smaller)
-  var lbl = TIMES[timeIndex]; // "2018-04-14 15Z"
-  var parts = lbl.split(" ");
-  var date = parts[0]; // yyyy-mm-dd
-  var z = parts[1].replace("Z","");
-  var hr = parseInt(z,10);
-  var y = date.split("-")[0], m = date.split("-")[1], d = date.split("-")[2];
-  var startHr = Math.max(0, hr-1);
-  var endHr = Math.min(23, hr+1);
-
-  function pad2(n){ return (n<10?"0":"")+n; }
-  var s = y + "-" + m + "-" + d + " " + pad2(startHr) + ":00";
-  var e = y + "-" + m + "-" + d + " " + pad2(endHr) + ":59";
-
-  var base = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py";
-  var qs = [
-    "data=all",
-    "tz=Etc/UTC",
-    "format=comma",
-    "lat1=" + METAR_BOX.south,
-    "lat2=" + METAR_BOX.north,
-    "lon1=" + METAR_BOX.west,
-    "lon2=" + METAR_BOX.east,
-    "year1=" + y, "month1=" + parseInt(m,10), "day1=" + parseInt(d,10), "hour1=" + pad2(startHr),
-    "year2=" + y, "month2=" + parseInt(m,10), "day2=" + parseInt(d,10), "hour2=" + pad2(endHr),
-    "direct=no"
-  ].join("&");
-  return base + "?" + qs;
-}
-
-function parseCSV(text){
-  var lines = text.trim().split(/\r?\n/);
-  if(lines.length < 2) return [];
-  var header = lines[0].split(",");
-  var idx = {};
-  header.forEach(function(h,i){ idx[h.trim()] = i; });
-
-  function val(row, key){
-    var i = idx[key];
-    if(i === undefined) return "";
-    return (row[i]||"").trim();
-  }
-
-  var rows = [];
-  for(var li=1; li<lines.length; li++){
-    var cols = lines[li].split(",");
-    if(cols.length < 5) continue;
-    var lat = parseFloat(val(cols,"lat"));
-    var lon = parseFloat(val(cols,"lon"));
-    if(!isFinite(lat) || !isFinite(lon)) continue;
-
-    rows.push({
-      station: val(cols,"station"),
-      valid: val(cols,"valid"),
-      tmpf: parseFloat(val(cols,"tmpf")),
-      dwpf: parseFloat(val(cols,"dwpf")),
-      sknt: parseFloat(val(cols,"sknt")),
-      drct: parseFloat(val(cols,"drct")),
-      gust: parseFloat(val(cols,"gust")),
-      visib: parseFloat(val(cols,"vsby")),
-      lat: lat, lon: lon
-    });
-  }
-  return rows;
+  return "rgb(255,255,255)";
 }
 
 function tempColorF(t){
-  if(!isFinite(t)) return "#cccccc";
-  // simple ramp: blue->green->yellow->orange
-  if(t <= 10) return "#8bd3ff";
-  if(t <= 25) return "#3b82f6";
-  if(t <= 35) return "#22c55e";
-  if(t <= 45) return "#a3e635";
-  if(t <= 55) return "#facc15";
-  if(t <= 70) return "#fb923c";
-  return "#ef4444";
+  return piecewiseColor(t, [
+    {v: 10, c: [170, 220, 255]},
+    {v: 20, c: [120, 190, 255]},
+    {v: 30, c: [0, 70, 200]},
+    {v: 40, c: [0, 170, 0]},
+    {v: 50, c: [150, 255, 150]},
+    {v: 60, c: [255, 235, 0]},
+    {v: 70, c: [255, 140, 0]},
+    {v: 85, c: [255, 80, 0]}
+  ]);
 }
 
-function makeDot(row, zoom){
-  var t = row.tmpf;
-  var size = (zoom <= 5) ? 18 : (zoom <= 6 ? 22 : (zoom <= 7 ? 26 : 32));
-  var bg = tempColorF(t);
-  var txt = isFinite(t) ? Math.round(t).toString() : "";
-  var html = '<div class="metarDot" style="width:'+size+'px;height:'+size+'px;background:'+bg+';">'+txt+'</div>';
-  return L.marker([row.lat, row.lon], {icon: L.divIcon({className:"", html:html, iconSize:[size,size], iconAnchor:[size/2,size/2]})});
+function dewColorF(td){
+  return piecewiseColor(td, [
+    {v: 10, c: [90, 55, 20]},
+    {v: 20, c: [140, 95, 40]},
+    {v: 30, c: [200, 160, 110]},
+    {v: 50, c: [190, 200, 140]},
+    {v: 60, c: [0, 170, 0]},
+    {v: 70, c: [0, 90, 0]}
+  ]);
 }
 
-function makeWindArrow(row, zoom){
-  if(!isFinite(row.drct) || !isFinite(row.sknt)) return null;
-  // Make arrow length scale with wind speed; keep subtle
-  var kts = row.sknt;
-  var px = (zoom <= 6) ? 12 : 16;
-  var rot = (row.drct + 180) % 360; // TO direction
-  var html = '<div class="windArrow" style="transform: rotate('+rot+'deg) scale('+ (0.6 + Math.min(1.2, kts/25)) +');"></div>';
-  return L.marker([row.lat, row.lon], {
-    interactive:false,
-    icon: L.divIcon({className:"", html:html, iconSize:[px,px], iconAnchor:[px/2,px/2]})
+function windColorMph(spd){
+  return piecewiseColor(spd, [
+    {v: 0,  c: [0, 40, 160]},
+    {v: 10, c: [0, 120, 255]},
+    {v: 20, c: [0, 210, 180]},
+    {v: 35, c: [255, 220, 0]},
+    {v: 50, c: [255, 120, 0]},
+    {v: 70, c: [255, 80, 0]}
+  ]);
+}
+
+function pressureTrendColor(deltaInHg){
+  if (deltaInHg == null || !Number.isFinite(deltaInHg)) return "rgb(248,248,248)";
+  if (deltaInHg > 0.02)  return "rgb(215,245,215)";
+  if (deltaInHg < -0.02) return "rgb(255,220,220)";
+  return "rgb(240,240,240)";
+}
+
+function visStyle(vis){
+  if (vis == null || !Number.isFinite(vis)) {
+    return { bg:"rgba(255,255,255,0.65)", border:"#333" };
+  }
+  const v = Math.max(0, Math.min(10, vis));
+  const alpha = 1 - (v / 10);
+  const border = (v < 1) ? "#666" : "#333";
+  return { bg:`rgba(255,255,255,${alpha.toFixed(3)})`, border };
+}
+
+/* ------------------------------------------------------------
+   7) Icons
+------------------------------------------------------------ */
+function dotIcon(txt, fill, size=28, fontSize=12, borderColor="#333"){
+  return L.divIcon({
+    className:"",
+    html:`<div class="dot"
+              style="width:${size}px;height:${size}px;
+                     background:${fill};
+                     border-color:${borderColor};
+                     font-size:${fontSize}px;">${txt}</div>`,
+    iconSize:[size,size],
+    iconAnchor:[size/2,size/2]
   });
 }
 
-var metarCache = null; // last fetched rows
-function refreshMETAR(){
-  // Clear current
-  metarLayer.clearLayers();
-  windArrowLayer.clearLayers();
+/* Wind arrow as inline SVG divIcon */
+function windArrowIcon(bearingDeg, mph){
+  const spd = (mph == null || !Number.isFinite(mph)) ? 0 : mph;
+  const color = windColorMph(spd);
 
-  // Only draw if either layer is enabled
-  var wantDots = map.hasLayer(metarLayer);
-  var wantArrows = map.hasLayer(windArrowLayer);
-  if(!wantDots && !wantArrows){ return; }
+  const Lmin = 14, Lmax = 52;
+  const len = Math.max(Lmin, Math.min(Lmax, Lmin + spd * 0.65));
 
-  var z = map.getZoom();
-  document.getElementById("zoomLabel").textContent = z;
+  const w = 60, h = 60;
+  const cx = w/2, cy = h/2;
 
-  function draw(rows){
-    metarCache = rows;
+  const svg = `
+    <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+      <g transform="translate(${cx},${cy})">
+        <line x1="0" y1="${len/2}" x2="0" y2="${-len/2}" stroke="${color}" stroke-width="4" stroke-linecap="round"/>
+        <polygon points="0,${-len/2-8} -8,${-len/2+6} 8,${-len/2+6}" fill="${color}"/>
+      </g>
+    </svg>
+  `;
 
-    // Thin when zoomed out (reduce clutter)
-    var stride = (z <= 5) ? 6 : (z <= 6 ? 4 : (z <= 7 ? 2 : 1));
-    var bounds = map.getBounds();
-
-    var kept = 0;
-    for(var i=0;i<rows.length;i++){
-      var r = rows[i];
-      // only show those in current map bounds to keep it clean
-      if(!bounds.contains([r.lat, r.lon])) continue;
-
-      if(stride > 1 && (i % stride) !== 0) continue;
-
-      if(wantDots){
-        var m = makeDot(r, z);
-        m.addTo(metarLayer);
-      }
-      if(wantArrows){
-        var a = makeWindArrow(r, z);
-        if(a) a.addTo(windArrowLayer);
-      }
-      kept++;
-    }
-
-    // Always try to keep Sioux Falls area point visible if in bounds (KFSD / FSD)
-    var sf = rows.find(function(r){ return r.station === "KFSD" || r.station === "FSD"; });
-    if(sf && bounds.contains([sf.lat, sf.lon])){
-      if(wantDots) makeDot(sf, z).addTo(metarLayer);
-      if(wantArrows){
-        var aa = makeWindArrow(sf, z); if(aa) aa.addTo(windArrowLayer);
-      }
-    }
-
-    setStatus("Stations shown: " + kept + " (zoom " + z + ")");
-  }
-
-  // Fetch new each time index changes (simple + robust)
-  setStatus("Loading METARs…");
-  fetch(asosUrl(), {cache:"no-store"})
-    .then(function(r){ if(!r.ok) throw new Error("METAR HTTP " + r.status); return r.text(); })
-    .then(function(txt){
-      var rows = parseCSV(txt);
-      draw(rows);
-    })
-    .catch(function(err){
-      setStatus("METAR load failed: " + err.message);
-    });
+  return L.divIcon({
+    className:"",
+    html:`<div style="width:${w}px;height:${h}px;transform:rotate(${bearingDeg}deg);">
+            ${svg}
+          </div>`,
+    iconSize:[w,h],
+    iconAnchor:[w/2,h/2]
+  });
 }
 
-/* Update METARs when zoom changes if layers visible */
-map.on("zoomend", function(){
-  var z = map.getZoom();
-  document.getElementById("zoomLabel").textContent = z;
-  // Re-draw using cached data if available; otherwise fetch
-  if(metarCache && (map.hasLayer(metarLayer) || map.hasLayer(windArrowLayer))){
-    // Re-thin using cache:
-    metarLayer.clearLayers();
-    windArrowLayer.clearLayers();
-    var rows = metarCache;
-    var wantDots = map.hasLayer(metarLayer);
-    var wantArrows = map.hasLayer(windArrowLayer);
-    var stride = (z <= 5) ? 6 : (z <= 6 ? 4 : (z <= 7 ? 2 : 1));
-    var bounds = map.getBounds();
-    var kept=0;
-    for(var i=0;i<rows.length;i++){
-      var r=rows[i];
-      if(!bounds.contains([r.lat,r.lon])) continue;
-      if(stride>1 && (i%stride)!==0) continue;
-      if(wantDots) makeDot(r,z).addTo(metarLayer);
-      if(wantArrows){ var a=makeWindArrow(r,z); if(a) a.addTo(windArrowLayer); }
-      kept++;
-    }
-    var sf = rows.find(function(r){ return r.station === "KFSD" || r.station === "FSD"; });
-    if(sf && bounds.contains([sf.lat, sf.lon])){
-      if(wantDots) makeDot(sf,z).addTo(metarLayer);
-      if(wantArrows){ var aa=makeWindArrow(sf,z); if(aa) aa.addTo(windArrowLayer); }
-    }
-    setStatus("Stations shown: " + kept + " (zoom " + z + ")");
+/* ------------------------------------------------------------
+   8) Helpers
+------------------------------------------------------------ */
+function num(v){
+  const s = (v ?? "").toString().trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+function ktToMph(kt){ return kt == null ? null : (kt * 1.15078); }
+
+function parseVisMiles(raw){
+  if (raw == null) return { miles:null, label:"" };
+  let s = String(raw).trim();
+  if (!s) return { miles:null, label:"" };
+
+  if (s.startsWith("M")) s = s.slice(1);
+  s = s.replace(/\s+/g, " ");
+
+  const n = Number(s);
+  if (Number.isFinite(n)) return { miles:n, label:formatVisLabel(n) };
+
+  const parts = s.split(" ");
+  let whole = 0;
+  let frac = null;
+
+  if (parts.length === 2){
+    whole = Number(parts[0]);
+    frac = parts[1];
   } else {
-    refreshMETAR();
+    frac = parts[0];
   }
-});
 
-/* When user toggles METAR layers */
-map.on("overlayadd", function(e){
-  if(e.layer === metarLayer){
-    setBanner("SURFACE TEMPERATURES — " + TIMES[timeIndex]);
-    document.getElementById("legend").style.display = "block";
-    document.getElementById("legend").innerHTML =
-      '<div class="title">Temperature (°F)</div>'+
-      '<div class="bar" style="background:linear-gradient(to right,#8bd3ff,#3b82f6,#22c55e,#facc15,#fb923c,#ef4444)"></div>'+
-      '<div class="ticks"><span>10</span><span>30</span><span>50</span><span>70+</span></div>';
-    refreshMETAR();
+  if (frac && frac.includes("/")){
+    const [a,b] = frac.split("/").map(Number);
+    if (Number.isFinite(a) && Number.isFinite(b) && b !== 0){
+      const val = (Number.isFinite(whole) ? whole : 0) + (a/b);
+      return { miles:val, label:formatVisLabel(val) };
+    }
   }
-  if(e.layer === windArrowLayer){
-    setBanner("WIND ARROWS — " + TIMES[timeIndex]);
-    refreshMETAR();
+  return { miles:null, label:String(raw).trim() };
+}
+function formatVisLabel(x){
+  if (!Number.isFinite(x)) return "";
+  if (x >= 10) return "10+";
+
+  const denom = 8;
+  const whole = Math.floor(x);
+  const frac = x - whole;
+  const nume = Math.round(frac * denom);
+
+  if (nume === 0) return String(whole);
+  if (nume === denom) return String(whole + 1);
+
+  const gcd = (a,b)=>b?gcd(b,a%b):a;
+  const g = gcd(nume, denom);
+  const n = nume / g;
+  const d = denom / g;
+
+  if (whole === 0) return `${n}/${d}`;
+  return `${whole} ${n}/${d}`;
+}
+
+function popupHTML(r, dAlt){
+  const tmp = num(r.tmpf);
+  const dew = num(r.dwpf);
+  const drct = num(r.drct);
+  const sknt = num(r.sknt);
+  const gust = num(r.gust);
+  const alti = num(r.alti);
+
+  const mph  = sknt != null ? Math.round(ktToMph(sknt)) : "—";
+  const gmh  = gust != null ? Math.round(ktToMph(gust)) : "—";
+  const altTxt = alti != null ? alti.toFixed(2) : "—";
+  const dTxt = (dAlt == null) ? "—" : `${dAlt > 0 ? "+" : ""}${dAlt.toFixed(2)} in/3h`;
+
+  const visObj = parseVisMiles(r.vsby);
+  const visTxt = (visObj.label || r.vsby || "—");
+
+  const toDir = (drct != null) ? ((drct + 180) % 360) : null;
+
+  return `
+    <div style="font:600 13px/1.3 Arial,sans-serif">
+      <div style="font-size:14px;margin-bottom:4px"><b>${r.station || "Station"}</b></div>
+      <div style="opacity:.85;margin-bottom:6px">Valid: ${r.valid || ""} UTC</div>
+      <div>Temp: <b>${tmp == null ? "—" : Math.round(tmp)}</b> °F</div>
+      <div>Dew Pt: <b>${dew == null ? "—" : Math.round(dew)}</b> °F</div>
+      <div>Wind: <b>${mph}</b> mph (gust <b>${gmh}</b>)</div>
+      <div>Wind dir (FROM): <b>${drct == null ? "—" : drct.toFixed(0)}°</b></div>
+      <div>Arrow points (TO): <b>${toDir == null ? "—" : toDir.toFixed(0)}°</b></div>
+      <div>Vis: <b>${visTxt}</b> mi</div>
+      <div>Altimeter: <b>${altTxt}</b> inHg</div>
+      <div>Alt trend (3h): <b>${dTxt}</b></div>
+      <div>Wx: <b>${(r.wxcodes || "").trim() || "—"}</b></div>
+    </div>
+  `;
+}
+
+/* ------------------------------------------------------------
+   9) METAR fetch
+------------------------------------------------------------ */
+const reportType = 3;
+const SD_ONLY = ["SD_ASOS"];
+const REST = ["MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","IL_ASOS","MI_ASOS"];
+
+function asosURL(d, networks){
+  const iso = toISOZ(d);
+  return "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
+    + "?data=tmpf&data=dwpf&data=drct&data=sknt&data=gust&data=vsby&data=alti&data=wxcodes"
+    + `&network=${encodeURIComponent(networks.join(","))}`
+    + `&report_type=${reportType}`
+    + "&latlon=yes&format=onlycomma&tz=UTC"
+    + `&sts=${encodeURIComponent(iso)}`
+    + `&ets=${encodeURIComponent(iso)}`
+    + "&missing=empty";
+}
+
+function parseCSV(text){
+  const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.startsWith("#"));
+  if (lines.length < 2) return [];
+  const header = lines[0].split(",");
+  return lines.slice(1).map(line => {
+    const cols = line.split(",");
+    const obj = {};
+    header.forEach((h,i)=>obj[h]=cols[i] ?? "");
+    return obj;
+  });
+}
+
+async function fetchRows(d, networks){
+  const resp = await fetch(asosURL(d, networks), { cache:"no-store" });
+  if (!resp.ok) throw new Error(`METAR HTTP ${resp.status}`);
+  return parseCSV(await resp.text());
+}
+
+/* ------------------------------------------------------------
+   10) Alerts styling + LOADER (UPDATED for your new filenames)
+------------------------------------------------------------ */
+const NWS_EVENT_COLOR = {
+  // Severe / Flood (from NWS Hazards Map colors)
+  "Tornado Warning": "#FF0000",
+  "Severe Thunderstorm Warning": "#FFA500",
+  "Flash Flood Warning": "#8B0000",
+  "Flash Flood Watch": "#2E8B57",
+  "Flood Warning": "#00FF00",
+  "Flood Advisory": "#00FF7F",
+  "Flood Watch": "#2E8B57",
+
+  // Winter
+  "Blizzard Warning": "#FF4500",
+  "Winter Storm Warning": "#FF69B4",
+  "Winter Storm Watch": "#4682B4",
+  "Winter Weather Advisory": "#7B68EE",
+  "Ice Storm Warning": "#8B008B",
+  "Snow Squall Warning": "#C71585",
+
+  // Wind / Other
+  "High Wind Warning": "#DAA520",
+  "Wind Advisory": "#D2B48C",
+  "Dense Fog Advisory": "#708090"
+};
+
+function pickProp(p, keys){
+  if (!p) return "";
+  for (const k of keys){
+    if (p[k] != null && String(p[k]).trim() !== "") return String(p[k]).trim();
+    const kk = Object.keys(p).find(x => x.toLowerCase() === k.toLowerCase());
+    if (kk && p[kk] != null && String(p[kk]).trim() !== "") return String(p[kk]).trim();
   }
-  if(e.layer === alertsLayer){
-    setBanner("WEATHER ALERTS — " + TIMES[timeIndex]);
-    refreshAlerts();
+  return "";
+}
+
+function eventNameFromProps(p){
+  const e = pickProp(p, ["event","headline","name","title"]);
+  if (e) return e;
+
+  const phen = pickProp(p, ["phenomena","phenom","PHENOM","phen"]);
+  const sig  = pickProp(p, ["significance","sig","SIG"]);
+  if (phen && sig){
+    const key = `${phen}.${sig}`.toUpperCase();
+    // Common VTEC phenom.sig -> human name
+    const MAP = {
+      'BZ.W':'Blizzard Warning',
+      'WS.W':'Winter Storm Warning',
+      'WS.A':'Winter Storm Watch',
+      'WW.Y':'Winter Weather Advisory',
+      'ZR.Y':'Freezing Rain Advisory',
+      'IS.W':'Ice Storm Warning',
+      'SQ.W':'Snow Squall Warning',
+
+      'TO.W':'Tornado Warning',
+      'TO.A':'Tornado Watch',
+      'SV.W':'Severe Thunderstorm Warning',
+      'SV.A':'Severe Thunderstorm Watch',
+      'FF.W':'Flash Flood Warning',
+      'FF.A':'Flash Flood Watch',
+      'FA.W':'Flood Warning',
+      'FA.Y':'Flood Advisory',
+      'FL.W':'Flood Warning',
+      'FL.Y':'Flood Advisory',
+
+      'MA.W':'Marine Warning',
+      'GL.W':'Gale Warning',
+      'SR.W':'Storm Warning'
+    };
+    if (MAP[key]) return MAP[key];
+    return key;
   }
-});
-map.on("overlayremove", function(e){
-  if(e.layer === metarLayer){
-    metarLayer.clearLayers();
-    document.getElementById("legend").style.display = "none";
-    setBanner("APRIL 2018 CASE STUDY");
+
+  const wfo = pickProp(p, ["WFO","wfo"]);
+  const etn = pickProp(p, ["ETN","etn"]);
+  return (wfo || etn) ? `Alert ${wfo || ""} ${etn || ""}`.trim() : "Alert";
+}
+
+function colorForAlertName(name){
+  if (NWS_EVENT_COLOR[name]) return NWS_EVENT_COLOR[name];
+  const lower = String(name).toLowerCase();
+  if (lower.includes("blizzard") && lower.includes("warning")) return NWS_EVENT_COLOR["Blizzard Warning"];
+  if (lower.includes("winter storm") && lower.includes("warning")) return NWS_EVENT_COLOR["Winter Storm Warning"];
+  if (lower.includes("winter storm") && lower.includes("watch")) return NWS_EVENT_COLOR["Winter Storm Watch"];
+  if (lower.includes('winter weather') && lower.includes('advisory')) return NWS_EVENT_COLOR['Winter Weather Advisory'];
+  if (lower.includes('tornado') && lower.includes('warning')) return NWS_EVENT_COLOR['Tornado Warning'];
+  if (lower.includes('tornado') && lower.includes('watch')) return NWS_EVENT_COLOR['Tornado Watch'];
+  if (lower.includes('severe thunderstorm') && lower.includes('warning')) return NWS_EVENT_COLOR['Severe Thunderstorm Warning'];
+  if (lower.includes('severe thunderstorm') && lower.includes('watch')) return NWS_EVENT_COLOR['Severe Thunderstorm Watch'];
+  if (lower.includes('flash flood') && lower.includes('warning')) return NWS_EVENT_COLOR['Flash Flood Warning'];
+  if (lower.includes('flash flood') && lower.includes('watch')) return NWS_EVENT_COLOR['Flash Flood Watch'];
+  if (lower == 'flood warning') return NWS_EVENT_COLOR['Flood Warning'];
+  if (lower == 'flood advisory') return NWS_EVENT_COLOR['Flood Advisory'];
+  return '#CC0000'; // fallback
+
+}
+
+// NEW (your repo): alerts_20180414_0000Z.geojson
+function alertsFileCompactHourly(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `./alerts_${Y}${M}${D}_${H}00Z.geojson`;
+}
+
+// OLD (your repo): alerts_2018-04-14T21Z.geojson
+function alertsFileOldDash(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `./alerts_${Y}-${M}-${D}T${H}Z.geojson`;
+}
+
+// Extra fallback (sometimes people store T2100Z)
+function alertsFileOldWithMinutes(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `./alerts_${Y}-${M}-${D}T${H}00Z.geojson`;
+}
+
+async function fetchFirstOk(urls){
+  let lastErr = "";
+  for (const u of urls){
+    try{
+      const r = await fetch(u, { cache:"no-store" });
+      if (!r.ok) { lastErr = `HTTP ${r.status}`; continue; }
+      const gj = await r.json();
+      return { url: u, gj };
+    } catch(e){
+      lastErr = e.message || String(e);
+    }
   }
-  if(e.layer === windArrowLayer){
-    windArrowLayer.clearLayers();
-    setBanner("APRIL 2018 CASE STUDY");
+  throw new Error(lastErr || "No alert file matched");
+}
+
+async function loadAlerts(){
+  if (!map.hasLayer(alertsLayer)) return;
+
+  // If you have a timeline_index.json + timeline_hourly/*.geojson, use it.
+  const snapped = snapCurrentToAlertsTimeline();
+
+  let candidates = [];
+  if (snapped && snapped.file){
+    candidates = [ './' + snapped.file.replace(/^\.\//, '') ];
+  } else {
+    // Backward compatibility: try legacy naming patterns
+    candidates = [
+      alertsFileCompactHourly(current),
+      alertsFileOldDash(current),
+      alertsFileOldWithMinutes(current)
+    ];
   }
-  if(e.layer === alertsLayer){
+
+  try{
+    const { url, gj } = await fetchFirstOk(candidates);
+
     alertsLayer.clearLayers();
-    setBanner("APRIL 2018 CASE STUDY");
+
+    let polyCount = 0;
+    L.geoJSON(gj, {
+      style: (feat) => {
+        const p = feat.properties || {};
+        const name = eventNameFromProps(p);
+        const c = colorForAlertName(name);
+        return { weight:2, color:c, fillColor:c, fillOpacity:0.18 };
+      },
+      onEachFeature: (feat, layer) => {
+        polyCount++;
+        const p = feat.properties || {};
+        const name = eventNameFromProps(p);
+        const c = colorForAlertName(name);
+
+        const wfo = pickProp(p, ['WFO','wfo']);
+        const etn = pickProp(p, ['ETN','etn']);
+        const status = pickProp(p, ['STATUS','status']);
+        const issued = pickProp(p, ['issuance','issued','onset','ISSUANCE','ISSUED','ISSUE']);
+        const expire = pickProp(p, ['expire','expires','end','EXPIRE','EXPIRES']);
+
+        const lines = [];
+        lines.push(`<div><span class="swatch" style="background:${c}"></span><b>${name}</b></div>`);
+        if (wfo || etn) lines.push(`Office/Event: <b>${wfo || '—'}</b> / <b>${etn || '—'}</b>`);
+        if (status) lines.push(`Status: <b>${status}</b>`);
+        if (issued) lines.push(`Issued: <b>${issued}</b>`);
+        if (expire) lines.push(`Expires: <b>${expire}</b>`);
+
+        layer.bindPopup(lines.join('<br>'));
+      }
+    }).eachLayer(l => alertsLayer.addLayer(l));
+
+    // Confirm which file loaded + how many polygons
+    const short = url.replace('./','');
+    setStatus(`Alerts loaded: ${short} | polygons: ${polyCount}`);
+
+  } catch(e){
+    console.warn('Alerts load failed:', e.message);
+    alertsLayer.clearLayers();
+    setStatus('Alerts not found for this hour (check filenames).');
   }
-});
-
-/* ======================
-   Alerts (load your hourly GeoJSON)
-   Folder: /timeline_hourly/
-   File pattern: alerts_YYYYMMDD_HH00Z.geojson  (adjust below if your naming differs)
-   Only show: Tornado / Severe / Flood (drop purple "other" hazards)
-   ====================== */
-function alertsFilename(){
-  var t = ymdhmFromLabel(TIMES[timeIndex]);
-  // You can change this if your files are named timeline_hourly/alerts_20180414_1500Z.geojson etc.
-  // We'll try two common patterns.
-  return {
-    a: "./timeline_hourly/alerts_" + t.ymd + "_" + t.z + "00Z.geojson",
-    b: "./timeline_hourly/alerts_" + t.ymd + "_" + t.hm + "Z.geojson"
-  };
 }
 
-function hazardColor(props){
-  var e = (props && (props.event || props.phenom || props.hazard || props.headline || "")) + "";
-  e = e.toLowerCase();
-  if(e.includes("tornado") || e.includes("tor")) return "#ff0000";
-  if(e.includes("severe") || e.includes("svr") || e.includes("thunderstorm")) return "#ffd400";
-  if(e.includes("flood") || e.includes("ffw")) return "#00c853";
-  // ignore others (the purple ones)
-  return null;
+/* ------------------------------------------------------------
+   11) Daily particles (toggle + day buttons)
+------------------------------------------------------------ */
+function particlesFileForDay(dayNum){
+  return `./wind_particles_201804${String(dayNum).padStart(2,"0")}.json`;
 }
 
-function styleAlert(feature){
-  var c = hazardColor(feature.properties || {});
-  if(!c) return {opacity:0, fillOpacity:0}; // effectively hide
-  return {color:c, weight:2, fillColor:c, fillOpacity:0.18};
+function normalizeVelocityJson(raw){
+  if (Array.isArray(raw)) return raw;
+  if (raw && Array.isArray(raw.data)) return raw.data;
+  return raw;
 }
 
-alertsLayer = L.geoJSON(null, {
-  style: styleAlert,
-  onEachFeature: function (feature, layer) {
-    var p = feature.properties || {};
-    var title = p.event || p.headline || "Alert";
-    layer.bindPopup("<b>" + title + "</b><br/>" + (p.ugc || "") + "<br/>" + (p.issue || p.onset || ""));
+async function refreshParticlesIfOn(){
+  if (!map.hasLayer(particlesToggle)) return;
+
+  if (typeof L.velocityLayer !== "function"){
+    setStatus("Wind particles: leaflet-velocity did not load.");
+    return;
   }
-});
 
-function refreshAlerts(){
-  alertsLayer.clearLayers();
-  if(!map.hasLayer(alertsLayer)) return;
+  const url = particlesFileForDay(particleDay);
 
-  var fn = alertsFilename();
-  setStatus("Loading alerts…");
-  fetch(fn.a, {cache:"no-store"})
-    .then(function(r){
-      if(r.ok) return r.json();
-      return fetch(fn.b, {cache:"no-store"}).then(function(r2){ if(!r2.ok) throw new Error("Alerts not found"); return r2.json(); });
-    })
-    .then(function(j){
-      alertsLayer.addData(j);
-      setStatus("Alerts loaded.");
-    })
-    .catch(function(err){
-      setStatus("Alerts not found for this hour (check filenames).");
+  try{
+    const r = await fetch(url, { cache:"no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const raw = await r.json();
+    const velData = normalizeVelocityJson(raw);
+
+    if (particlesLayer){
+      try { map.removeLayer(particlesLayer); } catch(_) {}
+      particlesLayer = null;
+    }
+
+    particlesLayer = L.velocityLayer({
+      data: velData,
+      velocityScale: 0.004,
+      particleAge: 120,
+      particleMultiplier: 1/900,
+      lineWidth: 1.7,
+      colorScale: [
+        "rgb(0,40,160)",
+        "rgb(0,120,255)",
+        "rgb(0,210,180)",
+        "rgb(255,220,0)",
+        "rgb(255,120,0)"
+      ],
+      minVelocity: 0,
+      maxVelocity: 60,
+      displayValues: false
     });
+
+    particlesLayer.addTo(map);
+    setStatus(`Particles loaded: ${url.replace("./","")}`);
+
+  } catch(e){
+    console.warn("Particles failed:", url, e.message);
+    setStatus(`Particles not found: ${url.replace("./","")}`);
+  }
 }
 
-/* Add alerts layer into control (we re-created it) */
-layerCtl.remove();
-overlays["Alerts (WWA)"] = alertsLayer;
-layerCtl = L.control.layers({"Base (clean)": cartoVoyager}, overlays, {collapsed:false}).addTo(map);
+/* Toggle handlers for particles + alerts */
+map.on("overlayadd", async (e) => {
+  if (e.layer === particlesToggle) await refreshParticlesIfOn();
+  if (e.layer === alertsLayer) await loadAlerts();
+});
+map.on("overlayremove", (e) => {
+  if (e.layer === particlesToggle && particlesLayer){
+    map.removeLayer(particlesLayer);
+    particlesLayer = null;
+  }
+});
 
-/* ======================
-   Particles (daily JSON files you already have)
-   NOTE: This is a placeholder hook. If your particles already work in your original repo,
-   keep using that code. This file doesn't break particles; it simply doesn't add them.
-   ====================== */
+/* ------------------------------------------------------------
+   12) Main refresh (METAR + alerts + arrows)
+------------------------------------------------------------ */
+async async function refreshAll(){
+  setStatus("Loading METARs…");
 
-/* ======================
-   UI button wiring
-   ====================== */
-document.getElementById("backBtn").onclick = function(){
-  timeIndex = (timeIndex + TIMES.length - 1) % TIMES.length;
-  setTimeLabel();
-  setBanner("APRIL 2018 CASE STUDY — " + TIMES[timeIndex]);
-  refreshAll();
-};
-document.getElementById("fwdBtn").onclick = function(){
-  timeIndex = (timeIndex + 1) % TIMES.length;
-  setTimeLabel();
-  setBanner("APRIL 2018 CASE STUDY — " + TIMES[timeIndex]);
-  refreshAll();
-};
+  const prev = new Date(current.getTime() - stepHours*3600*1000);
 
-document.getElementById("dayBackBtn").onclick = function(){ setStatus("Particles day: (wire to your existing particles code)"); };
-document.getElementById("dayFwdBtn").onclick = function(){ setStatus("Particles day: (wire to your existing particles code)"); };
+  const [sdNow, restNow, sdPrev, restPrev] = await Promise.all([
+    fetchRows(current, SD_ONLY),
+    fetchRows(current, REST),
+    fetchRows(prev, SD_ONLY),
+    fetchRows(prev, REST)
+  ]);
 
-function refreshAll(){
-  // Radar
-  loadRadarBounds(refreshObsRadar);
-  // METAR (if active)
-  refreshMETAR();
-  // Alerts (if active)
-  refreshAlerts();
+  const rowsNow  = sdNow.concat(restNow);
+  const rowsPrev = sdPrev.concat(restPrev);
+
+  const prevAlt = new Map();
+  for (const r of rowsPrev){
+    const st = (r.station || "").trim();
+    const a  = num(r.alti);
+    if (st && a != null) prevAlt.set(st, a);
+  }
+
+  [tempLayer, dewLayer, windNumLayer, windArrowLayer, gustLayer, visLayer, presLayer, wxLayer].forEach(l => l.clearLayers());
+
+  const z = map.getZoom();
+  const minSep = minSepForZoom(z);
+
+  const idxTemp = new CollisionIndex(Math.max(24, minSep));
+  const idxDew  = new CollisionIndex(Math.max(24, minSep));
+  const idxWind = new CollisionIndex(Math.max(24, minSep));
+  const idxGust = new CollisionIndex(Math.max(24, minSep));
+  const idxVis  = new CollisionIndex(Math.max(24, minSep));
+  const idxPres = new CollisionIndex(Math.max(24, minSep));
+  const idxWx   = new CollisionIndex(Math.max(24, minSep));
+  const idxArr  = new CollisionIndex(Math.max(30, minSep));
+
+  let shown = 0, total = 0;
+
+  for (const r of rowsNow){
+    const lat = num(r.lat), lon = num(r.lon);
+    if (lat == null || lon == null) continue;
+    total++;
+
+    const st = (r.station || "").trim();
+    const alti = num(r.alti);
+    const prevA = st ? prevAlt.get(st) : null;
+    const dAlt = (alti != null && prevA != null) ? (alti - prevA) : null;
+
+    const popup = popupHTML(r, dAlt);
+
+    const tmp = num(r.tmpf);
+    const dew = num(r.dwpf);
+
+    const drct = num(r.drct);
+    const sknt = num(r.sknt);
+    const gust = num(r.gust);
+
+    const mph  = sknt != null ? ktToMph(sknt) : null;
+    const gmh  = gust != null ? ktToMph(gust) : null;
+
+    const visObj = parseVisMiles(r.vsby);
+    const visMi = visObj.miles;
+
+    if (tmp != null && allowByCollision(idxTemp, lat, lon, minSep)){
+      L.marker([lat,lon], { icon: dotIcon(String(Math.round(tmp)), tempColorF(tmp), 28, 12) })
+        .bindPopup(popup).addTo(tempLayer);
+    }
+
+    if (dew != null && allowByCollision(idxDew, lat, lon, minSep)){
+      L.marker([lat,lon], { icon: dotIcon(String(Math.round(dew)), dewColorF(dew), 28, 12) })
+        .bindPopup(popup).addTo(dewLayer);
+    }
+
+    if (mph != null && allowByCollision(idxWind, lat, lon, minSep)){
+      L.marker([lat,lon], { icon: dotIcon(String(Math.round(mph)), windColorMph(mph), 28, 12) })
+        .bindPopup(popup).addTo(windNumLayer);
+    }
+
+    if (mph != null && drct != null && allowByCollision(idxArr, lat, lon, minSep)){
+      const toDir = (drct + 180) % 360;
+      L.marker([lat,lon], { icon: windArrowIcon(toDir, mph) })
+        .bindPopup(popup).addTo(windArrowLayer);
+    }
+
+    if (gmh != null && allowByCollision(idxGust, lat, lon, minSep)){
+      L.marker([lat,lon], { icon: dotIcon(String(Math.round(gmh)), windColorMph(gmh), 30, 12) })
+        .bindPopup(popup).addTo(gustLayer);
+    }
+
+    if ((visObj.label || "").trim() && allowByCollision(idxVis, lat, lon, minSep)){
+      const style = visStyle(visMi);
+      L.marker([lat,lon], { icon: dotIcon(visObj.label, style.bg, 30, 11, style.border) })
+        .bindPopup(popup).addTo(visLayer);
+    }
+
+    if (alti != null && allowByCollision(idxPres, lat, lon, minSep)){
+      const fill = pressureTrendColor(dAlt);
+      L.marker([lat,lon], { icon: dotIcon(alti.toFixed(2), fill, 44, 12, "#999") })
+        .bindPopup(popup).addTo(presLayer);
+    }
+
+    const wx = (r.wxcodes || "").trim();
+    if (wx && allowByCollision(idxWx, lat, lon, minSep)){
+      L.marker([lat,lon], { icon: dotIcon(wx, "rgba(255,255,255,0.85)", 30, 10, "#999") })
+        .bindPopup(popup).addTo(wxLayer);
+    }
+
+    shown++;
+  }
+
+  setStatus(`Stations shown: ${shown}/${total} (minSep ${minSep}px).`);
+
+  await loadAlerts();
+  await updateRadarObs();
+  updateBanner();
+
 }
 
-/* Startup */
-setTimeLabel();
-setBanner("APRIL 2018 CASE STUDY — " + TIMES[timeIndex]);
-setStatus("Ready. Toggle layers to load data.");
-document.getElementById("zoomLabel").textContent = map.getZoom();
+refreshAll().catch(err => {
+  console.error(err);
+  setStatus("Error: " + err.message);
+});
 </script>
 </body>
 </html>
