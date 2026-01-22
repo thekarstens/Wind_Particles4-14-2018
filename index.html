@@ -227,7 +227,6 @@ function fmtCST(dt){
   const ampm = (hr >= 12) ? "PM" : "AM";
   hr = hr % 12; if (hr === 0) hr = 12;
   return `${y}-${mo}-${da} ${hr} ${ampm} CST`;
-}-${M}-${D} ${H}Z`;
 }
 function toISOZ(d){
   const Y = d.getUTCFullYear();
