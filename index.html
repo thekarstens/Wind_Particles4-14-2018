@@ -347,7 +347,7 @@ let particlesLayer = null;
     })
     .catch(err => console.warn('Radar bounds not loaded:', err));
 
-  function updateObsRadar(){
+  async function updateObsRadar(){
     if (!obsRadarBounds) return;
     const file = radarFilenameFor(current);
     // Remove old overlay
@@ -382,7 +382,7 @@ let particlesLayer = null;
     return chain;
   }
 
-  function loadJetOnce(){
+  async function loadJetOnce(){
     if (jetVelocity) return;
     const candidates = [
       'jetstream_2018041418z.json',
@@ -408,7 +408,9 @@ let particlesLayer = null;
 
   map.on('overlayadd', (e)=>{
     if (e.layer === jetToggle) loadJetOnce();
+    if (e.layer === obsRadarToggle) updateObsRadar();
   });
+
 
 
 L.control.layers(
@@ -423,6 +425,7 @@ L.control.layers(
     "Pressure (trend)": presLayer,
     "Weather Codes": wxLayer,
     "Alerts (WWA)": alertsLayer,
+    "Composite Radar (Observed)": obsRadarToggle,
     "Daily wind particles": particlesToggle
   },
   { collapsed:false }
@@ -693,8 +696,95 @@ function popupHTML(r, dAlt){
    9) METAR fetch
 ------------------------------------------------------------ */
 const reportType = 3;
+
+  // ----- Composite Radar (Observed) from local PNGs in ./radar_frames/ -----
+  // Expected filenames like: radar_frames/n0q_201804141200.png (UTC time, 3-hourly)
+  // Bounds are read from radar_frames/radar_bounds.json if present; otherwise defaults are used.
+  const obsRadarToggle = L.layerGroup();
+
+  let obsRadarOverlay = null;
+  let obsRadarBounds = null;
+
+  // Manual nudge (optional): south ~60 miles, east ~15 miles. Set to 0 if you don't want it.
+  const OBS_RADAR_SHIFT = { dLat: -0.87, dLon: 0.27 };
+
+  function defaultObsRadarBounds() {
+    // IEM GIS N0Q mosaics are NAD83 geographic; typical extent:
+    // lon -126..-66, lat 24..50
+    const sw = L.latLng(24.0 + OBS_RADAR_SHIFT.dLat, -126.0 + OBS_RADAR_SHIFT.dLon);
+    const ne = L.latLng(50.0 + OBS_RADAR_SHIFT.dLat, -66.0 + OBS_RADAR_SHIFT.dLon);
+    return L.latLngBounds(sw, ne);
+  }
+
+  function parseBoundsJSON(j) {
+    // Accept a few possible shapes:
+    // 1) [[south, west],[north, east]]
+    // 2) { "bounds": [[south, west],[north, east]] }
+    // 3) { "sw":[lat,lon], "ne":[lat,lon] }
+    const b = Array.isArray(j) ? j : (j && (j.bounds || j.bbox));
+    if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
+      const sw = L.latLng(b[0][0] + OBS_RADAR_SHIFT.dLat, b[0][1] + OBS_RADAR_SHIFT.dLon);
+      const ne = L.latLng(b[1][0] + OBS_RADAR_SHIFT.dLat, b[1][1] + OBS_RADAR_SHIFT.dLon);
+      return L.latLngBounds(sw, ne);
+    }
+    if (j && j.sw && j.ne) {
+      const sw = L.latLng(j.sw[0] + OBS_RADAR_SHIFT.dLat, j.sw[1] + OBS_RADAR_SHIFT.dLon);
+      const ne = L.latLng(j.ne[0] + OBS_RADAR_SHIFT.dLat, j.ne[1] + OBS_RADAR_SHIFT.dLon);
+      return L.latLngBounds(sw, ne);
+    }
+    return null;
+  }
+
+  async function ensureObsRadarBounds() {
+    if (obsRadarBounds) return obsRadarBounds;
+    try {
+      const r = await fetch("./radar_frames/radar_bounds.json", { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        obsRadarBounds = parseBoundsJSON(j) || defaultObsRadarBounds();
+      } else {
+        obsRadarBounds = defaultObsRadarBounds();
+      }
+    } catch (e) {
+      obsRadarBounds = defaultObsRadarBounds();
+    }
+    return obsRadarBounds;
+  }
+
+  function fmt2(n) { return String(n).padStart(2, "0"); }
+  function fmtDateYYYYMMDD(dtUTC) {
+    return dtUTC.getUTCFullYear() + fmt2(dtUTC.getUTCMonth() + 1) + fmt2(dtUTC.getUTCDate());
+  }
+
+  function obsRadarFileForUTC(dtUTC) {
+    const ymd = fmtDateYYYYMMDD(dtUTC);
+    const hh = fmt2(dtUTC.getUTCHours());
+    // 3-hourly files you uploaded use minute 00
+    return `./radar_frames/n0q_${ymd}${hh}00.png`;
+  }
+
+  async function updateObsRadar() {
+    if (!map.hasLayer(obsRadarToggle)) return;
+
+    const bounds = await ensureObsRadarBounds();
+    const url = obsRadarFileForUTC(currentUTC);
+    const busted = `${url}?v=${Date.now()}`;
+
+    if (!obsRadarOverlay) {
+      obsRadarOverlay = L.imageOverlay(busted, bounds, {
+        opacity: 0.78,
+        className: "obs-radar",
+        interactive: false
+      });
+      obsRadarOverlay.addTo(obsRadarToggle);
+    } else {
+      obsRadarOverlay.setBounds(bounds);
+      obsRadarOverlay.setUrl(busted);
+    }
+  }
+
 const SD_ONLY = ["SD_ASOS"];
-const REST = ["MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","WI_ASOS","IL_ASOS","MI_ASOS"];
+const REST = ["MO_ASOS", "KS_ASOS", "MN_ASOS", "IA_ASOS", "NE_ASOS", "ND_ASOS", "WI_ASOS", "IL_ASOS", "MI_ASOS"];
 
 function asosURL(d, networks){
   const iso = toISOZ(d);
@@ -1007,8 +1097,9 @@ map.on("overlayremove", (e) => {
 /* ------------------------------------------------------------
    12) Main refresh (METAR + alerts + arrows)
 ------------------------------------------------------------ */
-async function refreshAll(){
+async async function refreshAll(){
   setStatus("Loading METARs…");
+  updateObsRadar();
 
   const prev = new Date(current.getTime() - stepHours*3600*1000);
 
