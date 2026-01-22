@@ -57,51 +57,45 @@
     opacity:.78;
   }
 
-/* Observed radar styling */
-.obs-radar { filter: brightness(1.22) contrast(1.08) saturate(1.05); mix-blend-mode: multiply; }
-
-  /* TV banner (bigger) */
+  /* Top banner */
   .tvbanner{
-    position:absolute; top:0; left:0; right:0;
-    z-index:100000;
+    position:absolute;
+    top:0; left:0; right:0;
+    z-index:99999;
     background:rgba(11,28,45,0.92);
     color:#fff;
-    font:900 22px/1.2 Arial, sans-serif;
+    font:800 22px/1.2 Arial, sans-serif;
     letter-spacing:0.6px;
-    padding:14px 18px;
-    border-bottom:2px solid rgba(255,255,255,0.12);
+    padding:12px 16px;
+    border-bottom:2px solid rgba(255,255,255,0.18);
     text-transform:uppercase;
     pointer-events:none;
-    display:none;
   }
-  /* Branding logo (bottom-right) */
+
+  /* Branding logo */
   #brandLogo{
     position:absolute;
     bottom:12px;
     right:12px;
     z-index:100000;
-    width:140px;
-    max-width:26vw;
+    width:150px;
+    max-width:25vw;
     height:auto;
     opacity:0.95;
-    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.28));
     pointer-events:none;
-    display:block;
   }
-  /* Push the upper-left panel down below banner */
-  .panel{ top:76px !important; }
-  /* Push layer control down below banner */
-  .leaflet-top.leaflet-right{ top:76px; }
-  .leaflet-control-layers{ margin-top:0px; }
+
+  /* Push layer control below banner */
+  .leaflet-top.leaflet-right{ top:64px; }
 
 </style>
 </head>
 
 <body>
+<div id="banner" class="tvbanner">APR 2018 CASE STUDY</div>
 <div id="map"></div>
-<div id="banner" class="tvbanner"></div>
 <img id="brandLogo" src="logo.png" alt="Weather Workshops" />
-
 
 <div class="panel">
   <div style="font-size:13px;margin-bottom:6px">Apr 2018 Case Study</div>
@@ -109,7 +103,7 @@
   <!-- Time controls for METAR + Alerts -->
   <div class="row">
     <button class="btn" id="backBtn">◀ Time</button>
-    <div class="mono" id="timeLabel">2018-04-14 9 AM CST</div>
+    <div class="mono" id="timeLabel">2018-04-14 15Z</div>
     <button class="btn" id="fwdBtn">Time ▶</button>
   </div>
 
@@ -217,16 +211,12 @@ function snapCurrentToAlertsTimeline(){
 }
 
 
-function fmtCST(dt){
-  // Convert UTC -> Central Standard Time (UTC-6) for display.
-  const cst = new Date(dt.getTime() - 6*3600*1000);
-  const y = cst.getUTCFullYear();
-  const mo = String(cst.getUTCMonth()+1).padStart(2,"0");
-  const da = String(cst.getUTCDate()).padStart(2,"0");
-  let hr = cst.getUTCHours();
-  const ampm = (hr >= 12) ? "PM" : "AM";
-  hr = hr % 12; if (hr === 0) hr = 12;
-  return `${y}-${mo}-${da} ${hr} ${ampm} CST`;
+function fmtZ(d){
+  const Y = d.getUTCFullYear();
+  const M = String(d.getUTCMonth()+1).padStart(2,"0");
+  const D = String(d.getUTCDate()).padStart(2,"0");
+  const H = String(d.getUTCHours()).padStart(2,"0");
+  return `${Y}-${M}-${D} ${H}Z`;
 }
 function toISOZ(d){
   const Y = d.getUTCFullYear();
@@ -235,25 +225,29 @@ function toISOZ(d){
   const H = String(d.getUTCHours()).padStart(2,"0");
   return `${Y}-${M}-${D}T${H}:00:00Z`;
 }
-function updateTimeLabel(){ timeLabelEl.textContent = fmtCST(current); }
+function updateTimeLabel(){ timeLabelEl.textContent = fmtZ(current); }
 updateTimeLabel();
+    updateObsRadar();
 
 // Try to load alerts timeline index (if present in repo)
 loadAlertsTimelineIndex().then(()=>{
   snapCurrentToAlertsTimeline();
   updateTimeLabel();
+    updateObsRadar();
 });
 
 document.getElementById("backBtn").onclick = async () => {
   current = new Date(current.getTime() - stepHours*3600*1000);
   snapCurrentToAlertsTimeline();
   updateTimeLabel();
+    updateObsRadar();
   await refreshAll();
 };
 document.getElementById("fwdBtn").onclick = async () => {
   current = new Date(current.getTime() + stepHours*3600*1000);
   snapCurrentToAlertsTimeline();
   updateTimeLabel();
+    updateObsRadar();
   await refreshAll();
 };
 
@@ -296,7 +290,131 @@ const alertsLayer = L.geoJSON(null);
 const particlesToggle = L.layerGroup();
 let particlesLayer = null;
 
-L.control.layers(null,
+
+  // =========================
+  // EXTRA LAYERS: Composite Radar (obs), MODIS, Jet Stream
+  // =========================
+
+  // --- Composite radar (PNG frames in ./radar_frames/) ---
+  const obsRadarToggle = L.layerGroup();      // this is what goes in the toggle box
+  let obsRadarOverlay = null;
+  let obsRadarBounds = null;
+
+  // Manual nudge requested: ~60 miles south and ~15 miles east (approx degrees)
+  const RADAR_LAT_SHIFT = -0.87;  // deg latitude (~60 mi)
+  const RADAR_LON_SHIFT =  0.27;  // deg longitude (~15 mi near 45N)
+
+  function ymd(dt){
+    const y = dt.getUTCFullYear();
+    const m = String(dt.getUTCMonth()+1).padStart(2,'0');
+    const d = String(dt.getUTCDate()).padStart(2,'0');
+    return `${y}${m}${d}`;
+  }
+  function hhmm(dt){
+    const h = String(dt.getUTCHours()).padStart(2,'0');
+    const min = String(dt.getUTCMinutes()).padStart(2,'0');
+    return `${h}${min}`;
+  }
+
+  // Snap to nearest 3-hour frame at minute 00
+  function snap3h(dt){
+    const t = new Date(dt.getTime());
+    t.setUTCMinutes(0,0,0);
+    const h = t.getUTCHours();
+    const snapped = Math.round(h/3)*3;
+    t.setUTCHours((snapped+24)%24);
+    return t;
+  }
+
+  function radarFilenameFor(dt){
+    const t = snap3h(dt);
+    return `radar_frames/n0q_${ymd(t)}${String(t.getUTCHours()).padStart(2,'0')}00.png`;
+  }
+
+  function applyRadarBoundsShift(b){
+    const s = b.south + RADAR_LAT_SHIFT;
+    const n = b.north + RADAR_LAT_SHIFT;
+    const w = b.west  + RADAR_LON_SHIFT;
+    const e = b.east  + RADAR_LON_SHIFT;
+    return [[s,w],[n,e]];
+  }
+
+  // Load bounds once
+  fetch('radar_frames/radar_bounds.json')
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('Missing radar_bounds.json')))
+    .then(b => {
+      obsRadarBounds = applyRadarBoundsShift(b);
+      // If the layer is toggled on already, draw immediately
+      updateObsRadar();
+    })
+    .catch(err => console.warn('Radar bounds not loaded:', err));
+
+  function updateObsRadar(){
+    if (!obsRadarBounds) return;
+    const file = radarFilenameFor(current);
+    // Remove old overlay
+    if (obsRadarOverlay){
+      obsRadarToggle.removeLayer(obsRadarOverlay);
+      obsRadarOverlay = null;
+    }
+    obsRadarOverlay = L.imageOverlay(file, obsRadarBounds, {opacity: 0.65, className:'obs-radar'});
+    obsRadarToggle.addLayer(obsRadarOverlay);
+    // If toggle currently on, keep it on the map
+    if (map.hasLayer(obsRadarToggle)){
+      obsRadarToggle.addTo(map);
+    }
+  }
+
+  // --- MODIS True Color (NASA GIBS) ---
+  const modisToggle = L.tileLayer(
+    'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/2018-04-14/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+    {opacity: 0.85, attribution: 'NASA GIBS'}
+  );
+
+  // --- Jet Stream particles (Leaflet-Velocity) ---
+  const jetToggle = L.layerGroup();
+  let jetVelocity = null;
+
+  function tryFetchFirst(urls){
+    // returns promise that resolves with first successful JSON
+    let chain = Promise.reject();
+    urls.forEach(u=>{
+      chain = chain.catch(()=>fetch(u).then(r=>r.ok ? r.json() : Promise.reject()));
+    });
+    return chain;
+  }
+
+  function loadJetOnce(){
+    if (jetVelocity) return;
+    const candidates = [
+      'jetstream_2018041418z.json',
+      'jetstream_2018041418Z.json',
+      'jetstream_20180414_18z.json',
+      'jetstream_20180414_18Z.json',
+      'jetstream_18z.json',
+      'jetstream.json'
+    ];
+    tryFetchFirst(candidates)
+      .then(data=>{
+        jetVelocity = L.velocityLayer({
+          displayValues: false,
+          displayOptions: { velocityType: 'Jet Stream' },
+          data: data,
+          maxVelocity: 120
+        });
+        jetToggle.addLayer(jetVelocity);
+        if (map.hasLayer(jetToggle)) jetToggle.addTo(map);
+      })
+      .catch(()=>console.warn('Jet stream JSON not found (expected one of):', candidates.join(', ')));
+  }
+
+  map.on('overlayadd', (e)=>{
+    if (e.layer === jetToggle) loadJetOnce();
+  });
+
+
+L.control.layers(
+  { "OpenStreetMap": osm },
   {
     "Temperature (°F)": tempLayer,
     "Dew Point (°F)": dewLayer,
@@ -307,8 +425,6 @@ L.control.layers(null,
     "Pressure (trend)": presLayer,
     "Weather Codes": wxLayer,
     "Alerts (WWA)": alertsLayer,
-    "Composite Radar (Observed)": obsRadarToggle,
-    "MODIS True Color": modis,
     "Daily wind particles": particlesToggle
   },
   { collapsed:false }
@@ -347,13 +463,11 @@ class CollisionIndex {
 }
 
 function minSepForZoom(z){
-  // Larger separation at low zoom to prevent overlapping circles.
-  if (z <= 4) return 72;
-  if (z === 5) return 58;
-  if (z === 6) return 44;
-  if (z === 7) return 30;
-  if (z === 8) return 18;
-  return 0; // z >= 9 show all
+  if (z <= 4) return 54;
+  if (z === 5) return 46;
+  if (z === 6) return 38;
+  if (z === 7) return 32;
+  return 0; // z >= 8 show all
 }
 function allowByCollision(index, lat, lon, minSepPx){
   if (minSepPx <= 0) return true;
@@ -884,8 +998,6 @@ async function refreshParticlesIfOn(){
 map.on("overlayadd", async (e) => {
   if (e.layer === particlesToggle) await refreshParticlesIfOn();
   if (e.layer === alertsLayer) await loadAlerts();
-  try { await syncObsRadar(); } catch(e){ console.warn(e); }
-  try { updateBanner(); } catch(e){}
 });
 map.on("overlayremove", (e) => {
   if (e.layer === particlesToggle && particlesLayer){
