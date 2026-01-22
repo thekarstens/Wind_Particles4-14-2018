@@ -859,7 +859,6 @@ map.on("overlayremove", (e) => {
 /* ------------------------------------------------------------
    12) Main refresh (METAR + alerts + arrows)
 ------------------------------------------------------------ */
-async 
 /* ============================================================
    Composite Radar (Observed) overlay (local PNGs in /radar_frames/)
    Files expected: radar_frames/n0q_YYYYMMDDHHMM.png
@@ -964,7 +963,7 @@ setTimeout(() => {
 }, 0);
 
 
-function refreshAll(){
+async function refreshAll(){
   setStatus("Loading METARs…");
 
   const prev = new Date(current.getTime() - stepHours*3600*1000);
