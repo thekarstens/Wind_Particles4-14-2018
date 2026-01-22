@@ -252,24 +252,38 @@ const alertsLayer = L.geoJSON(null);
 const particlesToggle = L.layerGroup();
 let particlesLayer = null;
 
-L.control.layers(
-  { "Basemap": base },
-  {
-    "Temperature (°F)": tempLayer,
-    "Dew Point (°F)": dewLayer,
-    "Wind Speed (mph)": windLayer,
-    "Wind Gusts (mph)": gustLayer,
-    "Pressure (trend)": presLayer,
-    "Visibility (mi)": visLayer,
-    "Weather Codes": wxLayer,
-    "Wind Arrows": arrowLayer,
-    "Alerts (WWA)": alertsLayer,
-    "MODIS True Color (Terra)": modisLayer,
-    "Composite Radar (Observed)": radarObsGroup,
-    "Daily wind particles": particlesLayer
-  },
-  { collapsed: false }
-).addTo(map);
+// --- MODIS true color (NASA GIBS) ---
+// Static date by default. If you want it to follow the time slider later, we can hook it into refreshAll().
+function modisUrl(ymd){
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${ymd}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+}
+const modisLayer = L.tileLayer(modisUrl("2018-04-14"), {
+  maxZoom: 9,
+  opacity: 0.85,
+  tileSize: 256,
+  noWrap: true
+});
+
+// Aliases used by the layer control (these exist elsewhere in the file)
+const windLayer = windNumLayer;
+const arrowLayer = windArrowLayer;
+
+// Overlay layers (checkboxes)
+L.control.layers({}, {
+  "Temperature (°F)": tempLayer,
+  "Dew Point (°F)": dewLayer,
+  "Wind Speed (mph)": windLayer,
+  "Wind Arrows": arrowLayer,
+  "Wind Gusts (mph)": gustLayer,
+  "Visibility (mi)": visLayer,
+  "Pressure (trend)": presLayer,
+  "Weather Codes": wxLayer,
+  "Alerts (WWA)": alertsLayer,
+  "Surface Analysis (WPC)": wpcLayer,
+  "Composite Radar (Observed)": radarObsGroup,
+  "MODIS True Color": modisLayer,
+  "Daily wind particles": particlesToggle
+}, { collapsed:false }).addTo(map);
 
 /* ------------------------------------------------------------
    5) Collision thinning (drop stations if overlapping)
