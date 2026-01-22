@@ -137,7 +137,7 @@
 ------------------------------------------------------------ */
 const map = L.map("map", { zoomControl:true }).setView([44.2, -96.5], 6);
 
-const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const osm = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
   maxZoom: 19,
   attribution: "© OpenStreetMap contributors"
 }).addTo(map);
@@ -227,27 +227,23 @@ function toISOZ(d){
 }
 function updateTimeLabel(){ timeLabelEl.textContent = fmtZ(current); }
 updateTimeLabel();
-    updateObsRadar();
 
 // Try to load alerts timeline index (if present in repo)
 loadAlertsTimelineIndex().then(()=>{
   snapCurrentToAlertsTimeline();
   updateTimeLabel();
-    updateObsRadar();
 });
 
 document.getElementById("backBtn").onclick = async () => {
   current = new Date(current.getTime() - stepHours*3600*1000);
   snapCurrentToAlertsTimeline();
   updateTimeLabel();
-    updateObsRadar();
   await refreshAll();
 };
 document.getElementById("fwdBtn").onclick = async () => {
   current = new Date(current.getTime() + stepHours*3600*1000);
   snapCurrentToAlertsTimeline();
   updateTimeLabel();
-    updateObsRadar();
   await refreshAll();
 };
 
@@ -296,7 +292,10 @@ let particlesLayer = null;
   // =========================
 
   // --- Composite radar (PNG frames in ./radar_frames/) ---
-  const obsRadarToggle = L.layerGroup();      // this is what goes in the toggle box
+  obsRadarToggle = L.layerGroup();
+  // Initialize first frame once toggle exists
+  try { updateObsRadar(); } catch(e) { console.warn("updateObsRadar init", e); }
+// this is what goes in the toggle box
   let obsRadarOverlay = null;
   let obsRadarBounds = null;
 
@@ -345,7 +344,6 @@ let particlesLayer = null;
     .then(b => {
       obsRadarBounds = applyRadarBoundsShift(b);
       // If the layer is toggled on already, draw immediately
-      updateObsRadar();
     })
     .catch(err => console.warn('Radar bounds not loaded:', err));
 
