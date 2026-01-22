@@ -1,13 +1,14 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Apr 2018 Case Study</title>
 
-<link rel="stylesheet" href="./leaflet.css"/>
-<script src="./leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+<!-- Leaflet Velocity -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet-velocity@2.1.4/dist/leaflet-velocity.css"/>
 <script src="https://unpkg.com/leaflet-velocity@2.1.4/dist/leaflet-velocity.js"></script>
 
@@ -15,70 +16,39 @@
   html, body { height:100%; margin:0; }
   #map { height:100%; background:#fff; }
 
-  /* left control panel */
+  /* Banner styled to match Weather Workshops vibe (navy + orange accent) */
+  #banner{
+    position:absolute; top:0; left:0; right:0;
+    z-index:99999;
+    background:rgba(11,28,45,0.94);
+    color:#fff;
+    font:800 18px/1.15 Arial, sans-serif;
+    letter-spacing:0.6px;
+    padding:10px 16px 12px 16px;
+    border-bottom:3px solid rgba(245,156,38,0.95);
+    text-transform:uppercase;
+    pointer-events:none;
+  }
+
   .panel{
-    position:absolute; top:64px; left:14px; z-index:9999;
+    position:absolute; top:58px; left:10px; z-index:9999;
     background:rgba(255,255,255,0.95);
-    border:1px solid #cfd7df; border-radius:14px;
-    padding:12px 12px;
-    font:600 12px/1.25 Arial, sans-serif;
-    box-shadow: 0 2px 12px rgba(0,0,0,.10);
-    min-width: 340px;
+    border:1px solid #ccc; border-radius:12px;
+    padding:10px;
+    font:600 12px/1.2 Arial, sans-serif;
+    box-shadow: 0 2px 10px rgba(0,0,0,.10);
+    min-width: 330px;
+    max-width: 360px;
   }
   .row{ display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
   .btn{
-    border:1px solid #1b2c3a; background:#fff; border-radius:12px;
-    padding:7px 11px; cursor:pointer; font:800 12px Arial;
+    border:1px solid #333; background:#fff; border-radius:10px;
+    padding:6px 10px; cursor:pointer; font:700 12px Arial;
   }
   .btn:active{ transform: translateY(1px); }
   .mono{ font-family: ui-monospace, Menlo, Consolas, monospace; font-weight:800; }
   .tiny { font:600 11px/1.2 Arial, sans-serif; opacity:.78; }
 
-  /* right toggle box */
-  .toggles{
-    position:absolute; top:64px; right:14px; z-index:9999;
-    background:rgba(255,255,255,0.95);
-    border:1px solid #cfd7df; border-radius:14px;
-    padding:10px 12px;
-    font:700 12px/1.35 Arial, sans-serif;
-    box-shadow: 0 2px 12px rgba(0,0,0,.10);
-    min-width: 230px;
-  }
-  .toggles label{ display:flex; align-items:center; gap:8px; margin:6px 0; }
-  .toggles input{ transform: scale(1.05); }
-
-  /* banner styled to match logo colors (navy + gold accent) */
-  .tvbanner{
-    position:absolute;
-    top:0; left:0; right:0;
-    z-index:100000;
-    background:rgba(14,34,52,0.94);
-    color:#fff;
-    font:900 18px/1.2 Arial, sans-serif;
-    letter-spacing:0.6px;
-    padding:12px 16px;
-    border-bottom:3px solid rgba(243,156,18,0.85);
-    text-transform:uppercase;
-    pointer-events:none;
-  }
-
-  /* bottom-left legend card */
-  .legend{
-    position:absolute;
-    left:14px;
-    bottom:18px;
-    z-index:9999;
-    background:rgba(255,255,255,0.95);
-    border:1px solid #cfd7df;
-    border-radius:14px;
-    padding:10px 12px;
-    font:800 12px/1.25 Arial, sans-serif;
-    min-width:220px;
-    box-shadow: 0 2px 12px rgba(0,0,0,.10);
-    display:none;
-  }
-
-  /* logo */
   #brandLogo{
     position:absolute;
     bottom:10px;
@@ -87,33 +57,66 @@
     width:120px;
     max-width:22vw;
     height:auto;
-    opacity:0.92;
+    opacity:0.95;
     filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
     pointer-events:none;
   }
 
-  /* metar dot */
-  .dot{
+  /* Legend */
+  #legend{
+    position:absolute; left:14px; bottom:18px; z-index:9999;
+    background:rgba(255,255,255,0.95);
+    border:1px solid #ccc; border-radius:12px;
+    padding:10px 12px;
+    font:700 12px/1.25 Arial, sans-serif;
+    min-width:240px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.10);
+    display:none;
+  }
+  #legend .title{ font-size:12px; margin-bottom:6px; }
+  #legend .bar{ height:10px; border-radius:6px; border:1px solid #333; margin:6px 0; }
+  #legend .ticks{ display:flex; justify-content:space-between; font:700 11px/1.2 Arial, sans-serif; opacity:0.85; }
+
+  /* METAR circle marker look */
+  .metarDot{
     border-radius:50%;
-    border:2px solid rgba(0,0,0,0.75);
-    display:flex;align-items:center;justify-content:center;
-    font:900 12px/1 Arial, sans-serif;color:#111;
+    border:2px solid rgba(20,20,20,0.9);
+    display:flex; align-items:center; justify-content:center;
+    font:800 12px/1 Arial, sans-serif; color:#111;
     box-shadow: 0 1px 3px rgba(0,0,0,.25);
     user-select:none;
-    background:#fff;
+    background:#ddd;
   }
 
-  /* brighten observed radar a touch */
-  .obs-radar { filter: brightness(1.18) contrast(1.06); }
+  /* Wind arrow */
+  .windArrow{
+    width:0; height:0;
+    border-left:7px solid transparent;
+    border-right:7px solid transparent;
+    border-bottom:16px solid rgba(0,0,0,0.75);
+    transform-origin: 50% 85%;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+  }
+
+  /* Make observed radar less dark + knock down black pixels a bit */
+  .obs-radar { filter: brightness(1.25) contrast(1.10) saturate(1.10); }
+
+  /* Keep layer control readable */
+  .leaflet-control-layers-expanded{
+    font: 700 12px/1.25 Arial, sans-serif;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.12);
+  }
 </style>
 </head>
 
 <body>
 <div id="map"></div>
-<div id="banner" class="tvbanner">Apr 2018 Case Study</div>
-<div id="legend" class="legend"></div>
+<div id="banner">APRIL 2018 CASE STUDY</div>
+<div id="legend"></div>
 
-<img id="brandLogo" alt="Weather Workshops" src="./logo.png"/>
+<!-- Put your logo file at repo root as logo.png (or change src below) -->
+<img id="brandLogo" src="./logo.png" alt="Weather Workshops"/>
 
 <div class="panel">
   <div style="font-size:13px;margin-bottom:6px">Apr 2018 Case Study</div>
@@ -138,387 +141,498 @@
     <span class="mono" id="zoomLabel">6</span>
   </div>
 
-  <div class="row"><span class="tiny" id="status">Loading…</span></div>
-  <div class="tiny">Wind arrows: direction wind is blowing <b>TO</b> (METAR direction + 180°).</div>
-</div>
+  <div class="row">
+    <span class="tiny" id="status">Loading…</span>
+  </div>
 
-<div class="toggles" id="toggleBox">
-  <div style="font:900 12px Arial; opacity:.9; margin-bottom:6px;">Layers</div>
-  <label><input type="checkbox" id="layer_temp" checked> Temperature (°F)</label>
-  <label><input type="checkbox" id="layer_alerts"> Alerts (WWA)</label>
-  <label><input type="checkbox" id="layer_obsradar"> Composite Radar (Observed)</label>
-  <label><input type="checkbox" id="layer_hrrr_refd"> Radar (HRRR REFD)</label>
-  <label><input type="checkbox" id="layer_hrrr_repf"> Precip Type (HRRR REFP)</label>
+  <div class="tiny">
+    Wind arrows: direction wind is blowing <b>TO</b> (METAR direction + 180°).
+  </div>
 </div>
 
 <script>
-/* ---------------------------
-   1) Map + basemap
---------------------------- */
-const map = L.map('map', { preferCanvas:true }).setView([43.6, -96.7], 6);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-  maxZoom: 18,
-  attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-}).addTo(map);
-
-const statusEl = document.getElementById('status');
-const timeLabel = document.getElementById('timeLabel');
-const dayLabel = document.getElementById('dayLabel');
-const zoomLabel = document.getElementById('zoomLabel');
-const banner = document.getElementById('banner');
-const legend = document.getElementById('legend');
-
-map.on('zoomend', () => zoomLabel.textContent = map.getZoom());
-
-/* ---------------------------
-   2) Time handling (3-hour)
---------------------------- */
-function pad2(n){ return String(n).padStart(2,'0'); }
-function fmtYYYYMMDD(d){ return `${d.getUTCFullYear()}${pad2(d.getUTCMonth()+1)}${pad2(d.getUTCDate())}`; }
-function fmtISOZ(d){
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth()+1)}-${pad2(d.getUTCDate())} ${pad2(d.getUTCHours())}Z`;
-}
-// start at 2018-04-14 15Z
-let t = new Date(Date.UTC(2018,3,14,15,0,0));
-const STEP_HOURS = 3;
-
-function addHours(dt, h){
-  return new Date(dt.getTime() + h*3600*1000);
-}
-
-/* ---------------------------
-   3) Color scale (temp)
---------------------------- */
-function lerp(a,b,x){ return a + (b-a)*x; }
-function rgb(r,g,b){ return `rgb(${r|0},${g|0},${b|0})`; }
-// simple blue->green->yellow->orange
-function tempColorF(tf){
-  if (tf == null || isNaN(tf)) return '#999';
-  const t = tf;
-  if (t <= 10) return rgb(40,120,255);
-  if (t <= 30){
-    const x=(t-10)/20;
-    return rgb(lerp(40,70,x), lerp(120,200,x), lerp(255,255,x));
-  }
-  if (t <= 50){
-    const x=(t-30)/20;
-    return rgb(lerp(70,20,x), lerp(200,220,x), lerp(255,60,x));
-  }
-  if (t <= 70){
-    const x=(t-50)/20;
-    return rgb(lerp(20,255,x), lerp(220,150,x), lerp(60,0,x));
-  }
-  return rgb(255, 110, 0);
-}
-
-/* ---------------------------
-   4) METARs (IEM asos.py)
-   - Fetch all, then filter to map bounds
-   - Downsample when zoomed out
---------------------------- */
-const metarLayer = L.layerGroup().addTo(map);
-
-// Keep it simple: pull a broad set of networks; filter by bounds after.
-// (You can add/remove as you like.)
-const NETWORKS = [
-  "SD_ASOS","MN_ASOS","IA_ASOS","NE_ASOS","ND_ASOS","KS_ASOS","MO_ASOS","WI_ASOS","IL_ASOS"
+/* ======================
+   Time model (3-hour steps)
+   ====================== */
+var TIMES = [
+  "2018-04-14 12Z",
+  "2018-04-14 15Z",
+  "2018-04-14 18Z",
+  "2018-04-14 21Z"
 ];
+var timeIndex = 1; // start at 15Z
 
-function asosURL(dateUTC){
-  // yyyy mm dd hh mm
-  const y = dateUTC.getUTCFullYear();
-  const mo = pad2(dateUTC.getUTCMonth()+1);
-  const da = pad2(dateUTC.getUTCDate());
-  const hh = pad2(dateUTC.getUTCHours());
-  const mi = pad2(dateUTC.getUTCMinutes());
-  const params = new URLSearchParams({
-    data: "tmpf,drct,sknt,gust,vsby",
-    year1: y, month1: mo, day1: da, hour1: hh, minute1: mi,
-    year2: y, month2: mo, day2: da, hour2: hh, minute2: mi,
-    tz: "UTC",
-    format: "comma",
-    latlon: "yes",
-    missing: "M",
-    trace: "0",
-    direct: "yes"
-  });
-  // one network param per line
-  NETWORKS.forEach(n => params.append("network", n));
-  return `https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?${params.toString()}`;
+function ymdhmFromLabel(lbl){
+  // "2018-04-14 15Z" -> {ymd:"20180414", hm:"1500", z:"15"}
+  var parts = lbl.split(" ");
+  var ymd = parts[0].replaceAll("-","");
+  var z = parts[1].replace("Z","");
+  var hm = z + "00";
+  return {ymd: ymd, hm: hm, z: z};
 }
 
-function parseCSV(text){
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map(s=>s.trim());
-  const idx = Object.fromEntries(headers.map((h,i)=>[h,i]));
-  const out = [];
-  for (let i=1;i<lines.length;i++){
-    const cols = lines[i].split(",");
-    const lat = parseFloat(cols[idx.lat]);
-    const lon = parseFloat(cols[idx.lon]);
-    if (!isFinite(lat) || !isFinite(lon)) continue;
-    const tmpf = parseFloat(cols[idx.tmpf]);
-    const drct = parseFloat(cols[idx.drct]);
-    const sknt = parseFloat(cols[idx.sknt]);
-    out.push({lat, lon, tmpf, drct, sknt});
-  }
-  return out;
-}
+function setStatus(msg){ document.getElementById("status").textContent = msg; }
+function setBanner(msg){ document.getElementById("banner").textContent = msg; }
+function setTimeLabel(){ document.getElementById("timeLabel").textContent = TIMES[timeIndex]; }
 
-function downsample(points, maxCount){
-  if (points.length <= maxCount) return points;
-  const step = Math.ceil(points.length / maxCount);
-  const out = [];
-  for (let i=0;i<points.length;i+=step) out.push(points[i]);
-  return out;
-}
+/* ======================
+   Map base (clean + blue water)
+   ====================== */
+var map = L.map("map", { preferCanvas:true }).setView([43.55, -96.73], 6);
 
-function renderMETARs(rows){
-  metarLayer.clearLayers();
-  const z = map.getZoom();
-  const b = map.getBounds().pad(0.20);
+var cartoVoyager = L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors &copy; CARTO" }
+).addTo(map);
 
-  // filter to current view to reduce clutter, BUT ensure Sioux Falls stays in view when you zoom.
-  let pts = rows.filter(r => b.contains([r.lat, r.lon]));
+/* ======================
+   Layer groups
+   ====================== */
+var metarLayer = L.layerGroup();
+var windArrowLayer = L.layerGroup();
+var alertsLayer = L.geoJSON(null, {interactive:true});
+var obsRadarLayer = null;  // will be ImageOverlay
+var hrrrReflLayer = null;  // optional / placeholder
+var precipTypeLayer = null; // optional / placeholder
 
-  // if zoomed out really far and bounds include lots of stations, cap hard
-  let cap = 350;
-  if (z >= 6) cap = 700;
-  if (z >= 7) cap = 1200;
-  if (z <= 4) cap = 220;
+/* Layer control */
+var overlays = {
+  "Temperature (°F)": metarLayer,
+  "Wind Arrows": windArrowLayer,
+  "Alerts (WWA)": alertsLayer,
+  "Composite Radar (Observed)": L.layerGroup() // placeholder; we replace on refresh
+};
+var layerCtl = L.control.layers({"Base (clean)": cartoVoyager}, overlays, {collapsed:false}).addTo(map);
 
-  pts = downsample(pts, cap);
+/* Keep a handle to the observed radar checkbox group */
+var obsRadarGroup = overlays["Composite Radar (Observed)"];
 
-  pts.forEach(r=>{
-    const tf = r.tmpf;
-    const c = tempColorF(tf);
-    const size = (z <= 4) ? 20 : (z === 5 ? 24 : 28);
-    const icon = L.divIcon({
-      className: "",
-      html: `<div class="dot" style="width:${size}px;height:${size}px;background:${c}">${isFinite(tf)?Math.round(tf):""}</div>`,
-      iconSize: [size,size],
-      iconAnchor:[size/2,size/2]
+/* ======================
+   Observed Radar (3-hour n0q PNGs you uploaded)
+   Folder: /radar_frames/
+   Files: n0q_201804141200.png, n0q_201804141500.png, n0q_201804141800.png, n0q_201804142100.png
+   Bounds: /radar_frames/radar_bounds.json (optional). If missing, we use world-file bounds.
+   ====================== */
+var WORLD_BOUNDS = [[24.0, -126.0],[50.0, -66.0]]; // [southWest],[northEast]
+var radarBounds = WORLD_BOUNDS;
+
+function loadRadarBounds(cb){
+  fetch("./radar_frames/radar_bounds.json", {cache:"no-store"})
+    .then(function(r){ if(!r.ok) throw new Error("bounds http " + r.status); return r.json(); })
+    .then(function(j){
+      if(j && j.southWest && j.northEast){
+        radarBounds = [[j.southWest.lat, j.southWest.lng],[j.northEast.lat, j.northEast.lng]];
+      }
+      cb();
+    })
+    .catch(function(){
+      radarBounds = WORLD_BOUNDS;
+      cb();
     });
-    const m = L.marker([r.lat, r.lon], {icon});
-    m.bindTooltip(`Temp: ${isFinite(tf)?tf.toFixed(0):"M"}°F<br>Wind: ${isFinite(r.drct)?r.drct.toFixed(0):"M"}° / ${isFinite(r.sknt)?r.sknt.toFixed(0):"M"} kt`, {sticky:true});
-    metarLayer.addLayer(m);
-  });
-
-  statusEl.textContent = `Stations shown: ${pts.length}/${rows.length} (zoom ${z})`;
 }
 
-async function loadMETARs(){
-  const url = asosURL(t);
-  const resp = await fetch(url, {cache:"no-store"});
-  if (!resp.ok) throw new Error(`METAR HTTP ${resp.status}`);
-  const rows = parseCSV(await resp.text());
-  renderMETARs(rows);
+function makeObsRadarUrl(){
+  var t = ymdhmFromLabel(TIMES[timeIndex]);
+  return "./radar_frames/n0q_" + t.ymd + t.hm + ".png";
 }
 
-/* ---------------------------
-   5) Alerts (GeoJSON)
-   - expects: timeline_hourly/alerts_YYYYMMDD_HHMMZ.geojson
-   - if you only have hourly, HH00 is fine
---------------------------- */
-const alertsLayer = L.geoJSON(null, {
-  style: f => {
-    const ev = (f.properties && (f.properties.event || f.properties.phenomena)) || "";
-    // Focus only on flood / severe / tornado, skip anything else (including "purple fy.y")
-    const name = String(ev);
-    let color = null;
-    if (/tornado/i.test(name)) color = "#ff0000";
-    else if (/severe/i.test(name)) color = "#ffd700";
-    else if (/flash flood/i.test(name)) color = "#00ff00";
-    else if (/flood/i.test(name)) color = "#00a9ff";
-    else return {color:"#000", weight:0, fillOpacity:0}; // essentially hidden
-    return {color, weight:2, fillOpacity:0.15};
-  },
-  onEachFeature: (f, layer) => {
-    const p = f.properties || {};
-    const title = p.event || p.phenomena || "Alert";
-    const desc = p.description || p.headline || "";
-    layer.bindPopup(`<b>${title}</b><br><div style="max-width:340px">${desc}</div>`);
+function refreshObsRadar(){
+  // Remove previous overlay
+  if(obsRadarLayer){
+    try{ map.removeLayer(obsRadarLayer); }catch(e){}
+    obsRadarLayer = null;
+    obsRadarGroup.clearLayers();
+  }
+
+  // Only draw if layer is enabled
+  if(!map.hasLayer(obsRadarGroup)){ return; }
+
+  var url = makeObsRadarUrl();
+
+  // Probe existence (avoids noisy console 404)
+  fetch(url, {method:"HEAD", cache:"no-store"})
+    .then(function(r){
+      if(!r.ok){
+        setStatus("Observed radar: no matching file for this time. (Expected: " + url + ")");
+        return;
+      }
+      obsRadarLayer = L.imageOverlay(url, radarBounds, {opacity:0.72, className:"obs-radar"});
+      obsRadarGroup.addLayer(obsRadarLayer);
+      obsRadarLayer.addTo(map);
+      setStatus("Observed radar loaded: " + url);
+    })
+    .catch(function(){
+      setStatus("Observed radar: could not load " + url);
+    });
+}
+
+/* When user toggles Composite Radar on/off */
+map.on("overlayadd", function(e){
+  if(e.layer === obsRadarGroup){
+    loadRadarBounds(refreshObsRadar);
+    setBanner("COMPOSITE RADAR (OBS) — " + TIMES[timeIndex]);
+  }
+});
+map.on("overlayremove", function(e){
+  if(e.layer === obsRadarGroup){
+    if(obsRadarLayer){ try{ map.removeLayer(obsRadarLayer);}catch(err){} obsRadarLayer=null; }
+    obsRadarGroup.clearLayers();
+    setBanner("APRIL 2018 CASE STUDY");
   }
 });
 
-async function fetchFirstOK(urls){
-  for (const u of urls){
-    const r = await fetch(u, {cache:"no-store"});
-    if (r.ok) return {url:u, resp:r};
+/* ======================
+   METAR / ASOS plotting (temperature + wind arrows)
+   - Clean, not cluttered: we thin points when zoomed out.
+   - Always include Sioux Falls area station if it's inside map bounds.
+   ====================== */
+
+var METAR_BOX = { // Midwest focus; widen later if you want
+  south: 35.0, north: 49.5,
+  west: -104.5, east: -84.5
+};
+
+function asosUrl(){
+  // IEM ASOS request; 3-hour window around the selected time (keeps file smaller)
+  var lbl = TIMES[timeIndex]; // "2018-04-14 15Z"
+  var parts = lbl.split(" ");
+  var date = parts[0]; // yyyy-mm-dd
+  var z = parts[1].replace("Z","");
+  var hr = parseInt(z,10);
+  var y = date.split("-")[0], m = date.split("-")[1], d = date.split("-")[2];
+  var startHr = Math.max(0, hr-1);
+  var endHr = Math.min(23, hr+1);
+
+  function pad2(n){ return (n<10?"0":"")+n; }
+  var s = y + "-" + m + "-" + d + " " + pad2(startHr) + ":00";
+  var e = y + "-" + m + "-" + d + " " + pad2(endHr) + ":59";
+
+  var base = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py";
+  var qs = [
+    "data=all",
+    "tz=Etc/UTC",
+    "format=comma",
+    "lat1=" + METAR_BOX.south,
+    "lat2=" + METAR_BOX.north,
+    "lon1=" + METAR_BOX.west,
+    "lon2=" + METAR_BOX.east,
+    "year1=" + y, "month1=" + parseInt(m,10), "day1=" + parseInt(d,10), "hour1=" + pad2(startHr),
+    "year2=" + y, "month2=" + parseInt(m,10), "day2=" + parseInt(d,10), "hour2=" + pad2(endHr),
+    "direct=no"
+  ].join("&");
+  return base + "?" + qs;
+}
+
+function parseCSV(text){
+  var lines = text.trim().split(/\r?\n/);
+  if(lines.length < 2) return [];
+  var header = lines[0].split(",");
+  var idx = {};
+  header.forEach(function(h,i){ idx[h.trim()] = i; });
+
+  function val(row, key){
+    var i = idx[key];
+    if(i === undefined) return "";
+    return (row[i]||"").trim();
   }
+
+  var rows = [];
+  for(var li=1; li<lines.length; li++){
+    var cols = lines[li].split(",");
+    if(cols.length < 5) continue;
+    var lat = parseFloat(val(cols,"lat"));
+    var lon = parseFloat(val(cols,"lon"));
+    if(!isFinite(lat) || !isFinite(lon)) continue;
+
+    rows.push({
+      station: val(cols,"station"),
+      valid: val(cols,"valid"),
+      tmpf: parseFloat(val(cols,"tmpf")),
+      dwpf: parseFloat(val(cols,"dwpf")),
+      sknt: parseFloat(val(cols,"sknt")),
+      drct: parseFloat(val(cols,"drct")),
+      gust: parseFloat(val(cols,"gust")),
+      visib: parseFloat(val(cols,"vsby")),
+      lat: lat, lon: lon
+    });
+  }
+  return rows;
+}
+
+function tempColorF(t){
+  if(!isFinite(t)) return "#cccccc";
+  // simple ramp: blue->green->yellow->orange
+  if(t <= 10) return "#8bd3ff";
+  if(t <= 25) return "#3b82f6";
+  if(t <= 35) return "#22c55e";
+  if(t <= 45) return "#a3e635";
+  if(t <= 55) return "#facc15";
+  if(t <= 70) return "#fb923c";
+  return "#ef4444";
+}
+
+function makeDot(row, zoom){
+  var t = row.tmpf;
+  var size = (zoom <= 5) ? 18 : (zoom <= 6 ? 22 : (zoom <= 7 ? 26 : 32));
+  var bg = tempColorF(t);
+  var txt = isFinite(t) ? Math.round(t).toString() : "";
+  var html = '<div class="metarDot" style="width:'+size+'px;height:'+size+'px;background:'+bg+';">'+txt+'</div>';
+  return L.marker([row.lat, row.lon], {icon: L.divIcon({className:"", html:html, iconSize:[size,size], iconAnchor:[size/2,size/2]})});
+}
+
+function makeWindArrow(row, zoom){
+  if(!isFinite(row.drct) || !isFinite(row.sknt)) return null;
+  // Make arrow length scale with wind speed; keep subtle
+  var kts = row.sknt;
+  var px = (zoom <= 6) ? 12 : 16;
+  var rot = (row.drct + 180) % 360; // TO direction
+  var html = '<div class="windArrow" style="transform: rotate('+rot+'deg) scale('+ (0.6 + Math.min(1.2, kts/25)) +');"></div>';
+  return L.marker([row.lat, row.lon], {
+    interactive:false,
+    icon: L.divIcon({className:"", html:html, iconSize:[px,px], iconAnchor:[px/2,px/2]})
+  });
+}
+
+var metarCache = null; // last fetched rows
+function refreshMETAR(){
+  // Clear current
+  metarLayer.clearLayers();
+  windArrowLayer.clearLayers();
+
+  // Only draw if either layer is enabled
+  var wantDots = map.hasLayer(metarLayer);
+  var wantArrows = map.hasLayer(windArrowLayer);
+  if(!wantDots && !wantArrows){ return; }
+
+  var z = map.getZoom();
+  document.getElementById("zoomLabel").textContent = z;
+
+  function draw(rows){
+    metarCache = rows;
+
+    // Thin when zoomed out (reduce clutter)
+    var stride = (z <= 5) ? 6 : (z <= 6 ? 4 : (z <= 7 ? 2 : 1));
+    var bounds = map.getBounds();
+
+    var kept = 0;
+    for(var i=0;i<rows.length;i++){
+      var r = rows[i];
+      // only show those in current map bounds to keep it clean
+      if(!bounds.contains([r.lat, r.lon])) continue;
+
+      if(stride > 1 && (i % stride) !== 0) continue;
+
+      if(wantDots){
+        var m = makeDot(r, z);
+        m.addTo(metarLayer);
+      }
+      if(wantArrows){
+        var a = makeWindArrow(r, z);
+        if(a) a.addTo(windArrowLayer);
+      }
+      kept++;
+    }
+
+    // Always try to keep Sioux Falls area point visible if in bounds (KFSD / FSD)
+    var sf = rows.find(function(r){ return r.station === "KFSD" || r.station === "FSD"; });
+    if(sf && bounds.contains([sf.lat, sf.lon])){
+      if(wantDots) makeDot(sf, z).addTo(metarLayer);
+      if(wantArrows){
+        var aa = makeWindArrow(sf, z); if(aa) aa.addTo(windArrowLayer);
+      }
+    }
+
+    setStatus("Stations shown: " + kept + " (zoom " + z + ")");
+  }
+
+  // Fetch new each time index changes (simple + robust)
+  setStatus("Loading METARs…");
+  fetch(asosUrl(), {cache:"no-store"})
+    .then(function(r){ if(!r.ok) throw new Error("METAR HTTP " + r.status); return r.text(); })
+    .then(function(txt){
+      var rows = parseCSV(txt);
+      draw(rows);
+    })
+    .catch(function(err){
+      setStatus("METAR load failed: " + err.message);
+    });
+}
+
+/* Update METARs when zoom changes if layers visible */
+map.on("zoomend", function(){
+  var z = map.getZoom();
+  document.getElementById("zoomLabel").textContent = z;
+  // Re-draw using cached data if available; otherwise fetch
+  if(metarCache && (map.hasLayer(metarLayer) || map.hasLayer(windArrowLayer))){
+    // Re-thin using cache:
+    metarLayer.clearLayers();
+    windArrowLayer.clearLayers();
+    var rows = metarCache;
+    var wantDots = map.hasLayer(metarLayer);
+    var wantArrows = map.hasLayer(windArrowLayer);
+    var stride = (z <= 5) ? 6 : (z <= 6 ? 4 : (z <= 7 ? 2 : 1));
+    var bounds = map.getBounds();
+    var kept=0;
+    for(var i=0;i<rows.length;i++){
+      var r=rows[i];
+      if(!bounds.contains([r.lat,r.lon])) continue;
+      if(stride>1 && (i%stride)!==0) continue;
+      if(wantDots) makeDot(r,z).addTo(metarLayer);
+      if(wantArrows){ var a=makeWindArrow(r,z); if(a) a.addTo(windArrowLayer); }
+      kept++;
+    }
+    var sf = rows.find(function(r){ return r.station === "KFSD" || r.station === "FSD"; });
+    if(sf && bounds.contains([sf.lat, sf.lon])){
+      if(wantDots) makeDot(sf,z).addTo(metarLayer);
+      if(wantArrows){ var aa=makeWindArrow(sf,z); if(aa) aa.addTo(windArrowLayer); }
+    }
+    setStatus("Stations shown: " + kept + " (zoom " + z + ")");
+  } else {
+    refreshMETAR();
+  }
+});
+
+/* When user toggles METAR layers */
+map.on("overlayadd", function(e){
+  if(e.layer === metarLayer){
+    setBanner("SURFACE TEMPERATURES — " + TIMES[timeIndex]);
+    document.getElementById("legend").style.display = "block";
+    document.getElementById("legend").innerHTML =
+      '<div class="title">Temperature (°F)</div>'+
+      '<div class="bar" style="background:linear-gradient(to right,#8bd3ff,#3b82f6,#22c55e,#facc15,#fb923c,#ef4444)"></div>'+
+      '<div class="ticks"><span>10</span><span>30</span><span>50</span><span>70+</span></div>';
+    refreshMETAR();
+  }
+  if(e.layer === windArrowLayer){
+    setBanner("WIND ARROWS — " + TIMES[timeIndex]);
+    refreshMETAR();
+  }
+  if(e.layer === alertsLayer){
+    setBanner("WEATHER ALERTS — " + TIMES[timeIndex]);
+    refreshAlerts();
+  }
+});
+map.on("overlayremove", function(e){
+  if(e.layer === metarLayer){
+    metarLayer.clearLayers();
+    document.getElementById("legend").style.display = "none";
+    setBanner("APRIL 2018 CASE STUDY");
+  }
+  if(e.layer === windArrowLayer){
+    windArrowLayer.clearLayers();
+    setBanner("APRIL 2018 CASE STUDY");
+  }
+  if(e.layer === alertsLayer){
+    alertsLayer.clearLayers();
+    setBanner("APRIL 2018 CASE STUDY");
+  }
+});
+
+/* ======================
+   Alerts (load your hourly GeoJSON)
+   Folder: /timeline_hourly/
+   File pattern: alerts_YYYYMMDD_HH00Z.geojson  (adjust below if your naming differs)
+   Only show: Tornado / Severe / Flood (drop purple "other" hazards)
+   ====================== */
+function alertsFilename(){
+  var t = ymdhmFromLabel(TIMES[timeIndex]);
+  // You can change this if your files are named timeline_hourly/alerts_20180414_1500Z.geojson etc.
+  // We'll try two common patterns.
+  return {
+    a: "./timeline_hourly/alerts_" + t.ymd + "_" + t.z + "00Z.geojson",
+    b: "./timeline_hourly/alerts_" + t.ymd + "_" + t.hm + "Z.geojson"
+  };
+}
+
+function hazardColor(props){
+  var e = (props && (props.event || props.phenom || props.hazard || props.headline || "")) + "";
+  e = e.toLowerCase();
+  if(e.includes("tornado") || e.includes("tor")) return "#ff0000";
+  if(e.includes("severe") || e.includes("svr") || e.includes("thunderstorm")) return "#ffd400";
+  if(e.includes("flood") || e.includes("ffw")) return "#00c853";
+  // ignore others (the purple ones)
   return null;
 }
 
-async function loadAlerts(){
+function styleAlert(feature){
+  var c = hazardColor(feature.properties || {});
+  if(!c) return {opacity:0, fillOpacity:0}; // effectively hide
+  return {color:c, weight:2, fillColor:c, fillOpacity:0.18};
+}
+
+alertsLayer = L.geoJSON(null, {
+  style: styleAlert,
+  onEachFeature: function (feature, layer) {
+    var p = feature.properties || {};
+    var title = p.event || p.headline || "Alert";
+    layer.bindPopup("<b>" + title + "</b><br/>" + (p.ugc || "") + "<br/>" + (p.issue || p.onset || ""));
+  }
+});
+
+function refreshAlerts(){
   alertsLayer.clearLayers();
-  const ymd = fmtYYYYMMDD(t);
-  const hh = pad2(t.getUTCHours());
-  const mm = pad2(t.getUTCMinutes());
-  const candidates = [
-    `timeline_hourly/alerts_${ymd}_${hh}${mm}Z.geojson`,
-    `timeline_hourly/alerts_${ymd}_${hh}00Z.geojson`
-  ];
-  const hit = await fetchFirstOK(candidates);
-  if (!hit){
-    statusEl.textContent += " • Alerts: none";
-    return;
-  }
-  const gj = await hit.resp.json();
-  alertsLayer.addData(gj);
-  statusEl.textContent += ` • Alerts: loaded (${hit.url})`;
+  if(!map.hasLayer(alertsLayer)) return;
+
+  var fn = alertsFilename();
+  setStatus("Loading alerts…");
+  fetch(fn.a, {cache:"no-store"})
+    .then(function(r){
+      if(r.ok) return r.json();
+      return fetch(fn.b, {cache:"no-store"}).then(function(r2){ if(!r2.ok) throw new Error("Alerts not found"); return r2.json(); });
+    })
+    .then(function(j){
+      alertsLayer.addData(j);
+      setStatus("Alerts loaded.");
+    })
+    .catch(function(err){
+      setStatus("Alerts not found for this hour (check filenames).");
+    });
 }
 
-/* ---------------------------
-   6) Observed composite radar
-   - expects: radar_frames/n0q_YYYYMMDDHH00.png
-   - uses bounds from radar_frames/radar_bounds.json if present
---------------------------- */
-let radarBounds = null;
-let obsRadarOverlay = null;
+/* Add alerts layer into control (we re-created it) */
+layerCtl.remove();
+overlays["Alerts (WWA)"] = alertsLayer;
+layerCtl = L.control.layers({"Base (clean)": cartoVoyager}, overlays, {collapsed:false}).addTo(map);
 
-async function loadRadarBounds(){
-  // optional; if missing, use a reasonable default for IEM mosaics
-  const resp = await fetch("radar_frames/radar_bounds.json", {cache:"no-store"});
-  if (resp.ok){
-    const j = await resp.json();
-    // accept either {north,south,east,west} or [[S,W],[N,E]]
-    if (Array.isArray(j) && j.length===2) return L.latLngBounds([j[0][0], j[0][1]], [j[1][0], j[1][1]]);
-    if (j && isFinite(j.south) && isFinite(j.west) && isFinite(j.north) && isFinite(j.east)){
-      return L.latLngBounds([j.south, j.west], [j.north, j.east]);
-    }
-  }
-  // Default from IEM doc worldfile (your numbers): x=-126.., y=50.., pixel 0.005
-  // This corresponds roughly to S=20, N=50, W=-126, E=-66.
-  return L.latLngBounds([20, -126], [50, -66]);
+/* ======================
+   Particles (daily JSON files you already have)
+   NOTE: This is a placeholder hook. If your particles already work in your original repo,
+   keep using that code. This file doesn't break particles; it simply doesn't add them.
+   ====================== */
+
+/* ======================
+   UI button wiring
+   ====================== */
+document.getElementById("backBtn").onclick = function(){
+  timeIndex = (timeIndex + TIMES.length - 1) % TIMES.length;
+  setTimeLabel();
+  setBanner("APRIL 2018 CASE STUDY — " + TIMES[timeIndex]);
+  refreshAll();
+};
+document.getElementById("fwdBtn").onclick = function(){
+  timeIndex = (timeIndex + 1) % TIMES.length;
+  setTimeLabel();
+  setBanner("APRIL 2018 CASE STUDY — " + TIMES[timeIndex]);
+  refreshAll();
+};
+
+document.getElementById("dayBackBtn").onclick = function(){ setStatus("Particles day: (wire to your existing particles code)"); };
+document.getElementById("dayFwdBtn").onclick = function(){ setStatus("Particles day: (wire to your existing particles code)"); };
+
+function refreshAll(){
+  // Radar
+  loadRadarBounds(refreshObsRadar);
+  // METAR (if active)
+  refreshMETAR();
+  // Alerts (if active)
+  refreshAlerts();
 }
 
-function radarFileForTime(dateUTC){
-  // 3-hour step, use HH00
-  const ymd = fmtYYYYMMDD(dateUTC);
-  const hh = pad2(dateUTC.getUTCHours());
-  return `radar_frames/n0q_${ymd}${hh}00.png`;
-}
-
-async function loadObsRadar(){
-  if (!radarBounds) radarBounds = await loadRadarBounds();
-
-  const url = radarFileForTime(t);
-  const check = await fetch(url, {cache:"no-store"});
-  if (!check.ok){
-    statusEl.textContent += ` • Obs radar: missing (${url})`;
-    if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); obsRadarOverlay=null; }
-    return;
-  }
-
-  // rebuild overlay (simple + reliable)
-  if (obsRadarOverlay) map.removeLayer(obsRadarOverlay);
-  obsRadarOverlay = L.imageOverlay(url, radarBounds, {opacity:0.75, className:"obs-radar"});
-  if (document.getElementById("layer_obsradar").checked) obsRadarOverlay.addTo(map);
-  statusEl.textContent += ` • Obs radar: ${url}`;
-}
-
-/* ---------------------------
-   7) HRRR layers (optional)
-   - keep your existing tiles if you have them; otherwise harmless.
---------------------------- */
-let hrrrREFD = null;
-let hrrrREFP = null;
-
-function ensureHRRRLayers(){
-  // These URLs are placeholders; if your previous HRRR tile service is down, leave off.
-  // You can wire these to your own tiles later.
-  if (!hrrrREFD){
-    hrrrREFD = L.tileLayer('', {opacity:0.65}); // empty
-  }
-  if (!hrrrREFP){
-    hrrrREFP = L.tileLayer('', {opacity:0.65});
-  }
-}
-
-/* ---------------------------
-   8) UI wiring
---------------------------- */
-function updateBanner(){
-  const parts = [];
-  if (document.getElementById("layer_alerts").checked) parts.push("WEATHER ALERTS");
-  if (document.getElementById("layer_obsradar").checked) parts.push(`COMPOSITE RADAR (OBS) — ${fmtISOZ(t)}`);
-  if (document.getElementById("layer_temp").checked && parts.length===0) parts.push(`SURFACE TEMPERATURES — ${fmtISOZ(t)}`);
-  if (parts.length===0) parts.push(`APR 2018 CASE STUDY — ${fmtISOZ(t)}`);
-  banner.textContent = parts[0];
-}
-
-function setLegend(show){
-  if (!show){ legend.style.display="none"; return; }
-  legend.style.display="block";
-  legend.innerHTML = `<div style="font:900 12px Arial;margin-bottom:6px">Temperature (°F)</div>
-    <div class="tiny">Colored station dots (auto-thinned when zoomed out).</div>`;
-}
-
-async function refreshAll(){
-  timeLabel.textContent = fmtISOZ(t);
-  updateBanner();
-
-  const wantsTemp = document.getElementById("layer_temp").checked;
-  const wantsAlerts = document.getElementById("layer_alerts").checked;
-  const wantsObs = document.getElementById("layer_obsradar").checked;
-
-  // METARs
-  try{
-    if (wantsTemp){
-      await loadMETARs();
-      metarLayer.addTo(map);
-      setLegend(true);
-    }else{
-      metarLayer.clearLayers();
-      map.removeLayer(metarLayer);
-      setLegend(false);
-    }
-  }catch(e){
-    console.error(e);
-    statusEl.textContent = `METAR error: ${e.message}`;
-  }
-
-  // Alerts
-  try{
-    if (wantsAlerts){
-      await loadAlerts();
-      alertsLayer.addTo(map);
-    }else{
-      alertsLayer.clearLayers();
-      map.removeLayer(alertsLayer);
-    }
-  }catch(e){
-    console.error(e);
-    statusEl.textContent += ` • Alerts error`;
-  }
-
-  // Obs radar
-  try{
-    if (wantsObs){
-      await loadObsRadar();
-    }else{
-      if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); }
-    }
-  }catch(e){
-    console.error(e);
-    statusEl.textContent += ` • Radar error`;
-  }
-}
-
-/* button handlers */
-document.getElementById('backBtn').onclick = async ()=>{ t = addHours(t, -STEP_HOURS); await refreshAll(); };
-document.getElementById('fwdBtn').onclick  = async ()=>{ t = addHours(t,  STEP_HOURS); await refreshAll(); };
-
-document.getElementById("layer_temp").addEventListener("change", refreshAll);
-document.getElementById("layer_alerts").addEventListener("change", refreshAll);
-document.getElementById("layer_obsradar").addEventListener("change", refreshAll);
-
-/* particles day controls are placeholders (kept for your UI); wire later */
-document.getElementById('dayBackBtn').onclick = ()=>{ dayLabel.textContent = "Apr 13"; };
-document.getElementById('dayFwdBtn').onclick  = ()=>{ dayLabel.textContent = "Apr 15"; };
-
-refreshAll();
+/* Startup */
+setTimeLabel();
+setBanner("APRIL 2018 CASE STUDY — " + TIMES[timeIndex]);
+setStatus("Ready. Toggle layers to load data.");
+document.getElementById("zoomLabel").textContent = map.getZoom();
 </script>
 </body>
 </html>
