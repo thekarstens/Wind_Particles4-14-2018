@@ -168,8 +168,8 @@
 
   // Composite radar geographic extent (NAD83 geographic). Shifted ~60mi south + ~15mi east for better fit.
   // Base extent commonly used by IEM mosaics: lon -126..-66, lat 24..50
-  var SHIFT_LAT = -0.87;   // south
-  var SHIFT_LON =  0.22;   // east
+  var SHIFT_LAT = -1.09; // south shift (~15mi extra)   // south
+  var SHIFT_LON = 0.49; // east shift (~15mi extra)   // east
   var RADAR_BOUNDS = L.latLngBounds(
     L.latLng(24 + SHIFT_LAT, -126 + SHIFT_LON),
     L.latLng(50 + SHIFT_LAT,  -66 + SHIFT_LON)
@@ -246,6 +246,15 @@
   var obsRadarEnabled = true;
 
   var alertsLayer = L.geoJSON(null, {
+    filter: function(f){
+      const p = (f && f.properties) ? f.properties : {};
+      const ev = String(p.event || p.EVENT || p.headline || "").toLowerCase();
+      // Keep only WARNINGS (no statements/advisories/watches), so polygons don't show as black clutter.
+      if (!ev) return false;
+      if (ev.includes("statement") || ev.includes("advisory") || ev.includes("watch")) return false;
+      return ev.includes("warning");
+    },
+
     style: function(f){
       const p = (f && f.properties) ? f.properties : {};
       const ev = String(p.event || p.EVENT || p.headline || p.phenomena || "").toLowerCase();
