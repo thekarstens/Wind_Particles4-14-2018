@@ -169,7 +169,7 @@ body.student-mode .bstatus { display:none !important; }
 /* Make story button obvious */
 #beginStoryBtn{border-color: rgba(255,255,255,0.45);}
 /* --- Driving question line (option 2 style) --- */
-.dq-sub{margin-top:4px;font:800 12px/1 Arial,sans-serif;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dq-sub{margin-top:4px;font:800 14px/1 Arial,sans-serif;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dq-label{font-weight:900;opacity:.95}
 .dq-text{font-weight:900;opacity:1}
 
@@ -186,9 +186,9 @@ body.student-mode .bstatus { display:none !important; }
 .bbtn-story:hover{filter:brightness(0.96)}
 
 /* --- Product center --- */
-.banner-product{display:flex;align-items:center;justify-content:center;min-width:160px}
+.banner-product{display:flex;align-items:center;justify-content:center;min-width:240px}
 .product-center{
-  font:900 34px/1 Arial,sans-serif;
+  font:900 42px/1 Arial,sans-serif;
   letter-spacing:1px;
   text-transform:uppercase;
   padding:0 10px;
@@ -201,9 +201,16 @@ body.student-mode .bstatus { display:none !important; }
 /* --- Option-2 style driving question block --- */
 .banner-left{display:flex;flex-direction:column;gap:2px;min-width:420px;max-width:44vw}
 .lesson-left{font:900 24px/1 Arial,sans-serif;letter-spacing:.6px;text-transform:uppercase}
-.dq-sub{font:800 12px/1.2 Arial,sans-serif;letter-spacing:.2px;text-transform:none;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dq-sub{font:800 14px/1.2 Arial,sans-serif;letter-spacing:.2px;text-transform:none;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dq-label{font-weight:900;text-transform:uppercase;letter-spacing:.5px}
 .dq-text{font-weight:800}
+
+
+/* Stack Begin Story above time controls */
+.story-time-stack{display:flex;flex-direction:column;gap:8px;align-items:center;min-width:210px}
+.banner-mid-stack{gap:10px}
+/* Give the product a little breathing room */
+.banner-product{margin:0 6px}
 
 </style>
 </head>
@@ -232,13 +239,15 @@ body.student-mode .bstatus { display:none !important; }
       <div class="dq-sub"><span class="dq-label">Question:</span> <span class="dq-text" id="drivingQuestion">How can we use real-time weather data to make safer decisions?</span></div>
     </div>
 
-    <!-- 2) Begin story (big + yellow) -->
-    <button class="bbtn bbtn-story" id="beginStoryBtn" title="Begin the guided story">BEGIN STORY</button>
-
-    <!-- 3) Time controls -->
-    <div class="banner-mid" aria-label="Time controls">
-      <button class="bbtn" id="bBackBtn" title="Back 3 hours">◀</button>
-      <div class="btime" id="bannerTimeLabel">April 14, 2018 7AM</div>
+    <!-- 2) Begin story + time controls (stacked) -->
+    <div class="story-time-stack">
+      <button class="bbtn bbtn-story" id="beginStoryBtn" title="Begin the guided story">BEGIN STORY</button>
+      <div class="banner-mid banner-mid-stack" aria-label="Time controls">
+        <button class="bbtn" id="bBackBtn" title="Back 3 hours">◀</button>
+        <div class="btime" id="bannerTimeLabel">April 14, 2018 7AM</div>
+        <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
+      </div>
+    </div>
       <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
     </div>
 
@@ -610,11 +619,21 @@ if (radarOpacity){
   var alertsLayer = L.geoJSON(null, {
     filter: function(f){
       const p = (f && f.properties) ? f.properties : {};
-      const ev = String(p.event || p.EVENT || p.headline || "").toLowerCase();
-      // Keep only WARNINGS (no statements/advisories/watches), so polygons don't show as black clutter.
-      if (!ev) return false;
-      if (ev.includes("statement") || ev.includes("advisory") || ev.includes("watch")) return false;
-      return ev.includes("warning");
+      const ev = String(p.event || p.EVENT || p.headline || p.HEADLINE || "").toLowerCase();
+      const phe = String(p.phenomena || p.PHENOM || p.phenom || "").toLowerCase();
+      const sig = String(p.significance || p.SIG || p.sig || "").toLowerCase();
+
+      // If we have human-readable event text, keep WARNINGS only
+      if (ev){
+        if (ev.includes("statement") || ev.includes("advisory") || ev.includes("watch")) return false;
+        return ev.includes("warning");
+      }
+
+      // If data uses NWS-style codes, keep significance=W (warning)
+      // Examples: phe=sv,to,ff,fl with sig=w
+      if (sig === "w") return true;
+
+      return false;
     },
 
     
