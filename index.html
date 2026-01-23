@@ -73,7 +73,7 @@
 
 /* --- Banner layout + controls --- */
 .tvbanner{height:76px;padding:10px 14px;pointer-events:auto;}
-.banner-inner{height:100%;display:flex;align-items:center;gap:18px;}
+.banner-inner{height:100%;display:flex;align-items:center;gap:16px;}
 .banner-title{font-size:34px;font-weight:900;letter-spacing:1px;white-space:nowrap;text-transform:uppercase;}
 .banner-controls{display:flex;align-items:center;gap:10px;margin-left:10px;}
 .bbtn{pointer-events:auto;border:1px solid rgba(255,255,255,0.35);background:rgba(0,0,0,0.25);color:#fff;
@@ -83,8 +83,23 @@
 .bsep{width:1px;height:26px;background:rgba(255,255,255,0.25);margin:0 4px;}
 
   .bzoom{font-weight:800;letter-spacing:.06em;color:#fff;opacity:.92;margin-right:8px}
-.banner-legend{margin-left:auto;display:flex;flex-direction:column;gap:4px;min-width:250px;}
-  .bstatus{color:#fff;opacity:.85;font-weight:600;margin-left:14px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+.banner-actions{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.bstatus{margin-left:14px;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;
+  font:800 12px/1 Arial, sans-serif;opacity:.9;}
+/* Pop-out legend (so it doesn't eat banner space) */
+.legend-pop{
+  position:absolute;
+  top:74px;
+  right:14px;
+  z-index:100001;
+  background:rgba(255,255,255,0.97);
+  border:1px solid rgba(0,0,0,0.18);
+  border-radius:14px;
+  padding:10px 12px;
+  min-width:240px;
+  box-shadow:0 6px 18px rgba(0,0,0,0.20);
+}
+.hidden{display:none;}
 
 .leg-title{font-size:12px;opacity:.9;font-weight:800;text-transform:uppercase;letter-spacing:.6px;}
 .leg-bar{display:flex;gap:4px;}
@@ -162,46 +177,35 @@
 
     <div class="banner-controls" aria-label="Time controls">
       <button class="bbtn" id="bBackBtn" title="Back 3 hours">◀</button>
-      <div class="btime" id="bannerTimeLabel">2018-04-14 7 AM CST</div>
+      <div class="btime" id="bannerTimeLabel">Apr 14, 2018 7AM</div>
       <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
-      <div class="bsep"></div>
-      <div class="bzoom">ZOOM: <span id="zoomLabel">6</span></div>
+    </div>
+
+    <div class="banner-actions" aria-label="Map actions">
+      <button class="bbtn" id="legendToggleBtn" title="Show/hide radar legend">LEGEND</button>
+      <button class="bbtn" id="storyToggleBtn" title="Show/hide story">📖 STORY</button>
       <button class="bbtn" id="zoomOutBtn" title="Zoom out">−</button>
       <button class="bbtn" id="zoomInBtn" title="Zoom in">+</button>
-      <button class="bbtn" id="storyToggleBtn" title="Show/hide story">📖 STORY</button>
     </div>
 
     <div id="status" class="bstatus">Loading…</div>
-    <div class="banner-legend" aria-label="Radar legend">
-      <div class="leg-title">Reflectivity</div>
-      <div class="leg-bar">
-        <span class="sw sw1"></span>
-        <span class="sw sw2"></span>
-        <span class="sw sw3"></span>
-        <span class="sw sw4"></span>
-        <span class="sw sw5"></span>
-      </div>
-      <div class="leg-labels">
-        <span>Light</span><span>Mod</span><span>Heavy</span><span>Intense</span><span>Extreme</span>
-      </div>
+  </div>
+
+  <div id="legendPop" class="legend-pop hidden" aria-label="Radar legend">
+    <div class="leg-title">Reflectivity</div>
+    <div class="leg-bar">
+      <span class="sw sw1"></span>
+      <span class="sw sw2"></span>
+      <span class="sw sw3"></span>
+      <span class="sw sw4"></span>
+      <span class="sw sw5"></span>
+    </div>
+    <div class="leg-labels">
+      <span>Light</span><span>Mod</span><span>Heavy</span><span>Intense</span><span>Extreme</span>
     </div>
   </div>
 </div>
 
-<div id="storyPanel" aria-label="Story panel">
-  <div class="story-head">
-    <div id="storyTitle" class="story-title">Storm Story</div>
-    <button id="storyCloseBtn" class="story-close" title="Hide story">✕</button>
-  </div>
-  <div id="storyBody" class="story-body">
-    <p class="tiny">Loading story…</p>
-  </div>
-  <div class="story-nav" aria-label="Story navigation">
-    <button class="btn" id="storyPrevBtn" title="Previous story station">◀ Back</button>
-    <button class="btn" id="storyNextBtn" title="Next story station">Next ▶</button>
-  </div>
-  <div id="storyStep" class="tiny"></div>
-</div>
 
 <img id="brandLogo" src="./logo.png" alt="Weather Workshops" />
 <script>
@@ -259,7 +263,7 @@
 
   // ---------- Map ----------
   var map = L.map("map", { zoomControl:true }).setView([43.55, -96.73], 6);
-  document.getElementById("zoomLabel").textContent = map.getZoom();
+  var zl = document.getElementById("zoomLabel"); if (zl) zl.textContent = map.getZoom();
 
   // Clean base map (no labels)
   var base = L.tileLayer(
@@ -294,6 +298,7 @@
   var storyItems = [];
   var storyMarkers = [];
   var storyIndex = 0;
+  var focusRing = null;
 
   var storyPanel = document.getElementById("storyPanel");
   var storyTitleEl = document.getElementById("storyTitle");
@@ -302,6 +307,8 @@
 
   function storyOpen(){
     storyPanel.classList.add("story-open");
+    var legendPop = document.getElementById("legendPop");
+    if (legendPop) legendPop.classList.add("hidden");
     setTimeout(function(){ map.invalidateSize(); }, 220);
   }
   function storyClose(){
@@ -353,9 +360,34 @@
     // Highlight markers
     storyMarkers.forEach(function(m, idx){
       if (m && m.setStyle) {
-        m.setStyle({ radius: (idx===storyIndex? 9 : 6), opacity: 1, fillOpacity: (idx===storyIndex? 1 : 0.9) });
+        m.setStyle({
+          radius: (idx===storyIndex? 12 : 8),
+          opacity: 1,
+          fillOpacity: (idx===storyIndex? 1 : 0.9),
+          weight: (idx===storyIndex? 3 : 2)
+        });
+        if (idx===storyIndex && m.bringToFront) m.bringToFront();
       }
     });
+
+    // Focus ring around the active station (helps guide attention)
+    if (typeof item.lat === "number" && typeof item.lon === "number") {
+      var ringRadiusM = 22000; // ~14 miles
+      if (!focusRing) {
+        focusRing = L.circle([item.lat, item.lon], {
+          radius: ringRadiusM,
+          color: "rgba(30,136,229,0.95)",
+          weight: 2,
+          opacity: 0.95,
+          fill: false,
+          dashArray: "6 6"
+        }).addTo(map);
+      } else {
+        focusRing.setLatLng([item.lat, item.lon]);
+        focusRing.setRadius(ringRadiusM);
+      }
+      if (focusRing.bringToFront) focusRing.bringToFront();
+    }
 
     storyOpen();
 
@@ -382,7 +414,7 @@
       if (typeof item.lat !== "number" || typeof item.lon !== "number") return;
 
       var m = L.circleMarker([item.lat, item.lon], {
-        radius: 6,
+        radius: 8,
         color: "rgba(255,255,255,0.95)",
         weight: 2,
         fillColor: "rgba(30,136,229,0.95)",
@@ -450,6 +482,20 @@
   var storyToggleBtn = document.getElementById("storyToggleBtn");
   if (storyToggleBtn) storyToggleBtn.onclick = storyToggle;
 
+  // Radar legend popover toggle (keeps banner simple)
+  var legendToggleBtn = document.getElementById("legendToggleBtn");
+  var legendPop = document.getElementById("legendPop");
+  if (legendToggleBtn && legendPop){
+    legendToggleBtn.onclick = function(){
+      legendPop.classList.toggle("hidden");
+      // keep story panel above legend
+      if (!legendPop.classList.contains("hidden") && storyPanelEl){
+        // no-op; legend is separate
+      }
+    };
+  }
+
+
   var storyCloseBtn = document.getElementById("storyCloseBtn");
   if (storyCloseBtn) storyCloseBtn.onclick = storyClose;
 
@@ -463,7 +509,12 @@
 
 
   map.on("zoomend", function(){
-    document.getElementById("zoomLabel").textContent = map.getZoom();
+    var zl = document.getElementById("zoomLabel"); if (zl) zl.textContent = map.getZoom();
+  });
+
+  map.on("click", function(){
+    var lp = document.getElementById("legendPop");
+    if (lp) lp.classList.add("hidden");
   });
 
   // ---------- Layers ----------
