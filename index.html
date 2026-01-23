@@ -485,6 +485,11 @@ body.student-mode .bstatus { display:none !important; }
   right:10px !important;
 }
 
+
+/* Slightly tighter banner height */
+.banner-topline{padding:10px 14px 6px 14px !important;}
+.banner-bottomline{padding:4px 14px 8px 14px !important;}
+
 </style>
 </head>
 
@@ -1065,6 +1070,42 @@ var overlays = {};
   updateAll();
 
 })();
+
+// START button should launch the storyboard panel (not auto-launch)
+(function(){
+  const btn = document.getElementById("beginStoryBtn");
+  if(!btn) return;
+
+  btn.addEventListener("click", function(){
+    // Try known story open functions (whichever exists in this build)
+    if (typeof openStoryPanel === "function") { openStoryPanel(); return; }
+    if (typeof showStoryPanel === "function") { showStoryPanel(); return; }
+    if (typeof beginStory === "function") { beginStory(); return; }
+    if (typeof startStory === "function") { startStory(); return; }
+
+    // Fallback: just show the panel if it exists
+    const p = document.getElementById("storyPanel");
+    if (p) p.style.display = "block";
+    // And try to go to first station if helper exists
+    if (typeof setStoryStation === "function") setStoryStation(0);
+  });
+})();
+
+
+// Thicker state boundaries (no labels). Safe: only loads if file exists.
+(function(){
+  const url = "us_states.geojson"; // add this file if you want custom state outlines
+  fetch(url).then(r => {
+    if(!r.ok) throw new Error("no states geojson");
+    return r.json();
+  }).then(gj => {
+    const stateOutlines = L.geoJSON(gj, {
+      interactive:false,
+      style: {color:"#666", weight:3, opacity:0.65, fillOpacity:0}
+    }).addTo(map);
+  }).catch(()=>{ /* optional; base map still works */ });
+})();
+
 </script>
 </body>
 </html>
