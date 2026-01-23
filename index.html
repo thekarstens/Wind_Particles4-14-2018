@@ -434,6 +434,41 @@ body.student-mode .bstatus { display:none !important; }
   transform:translateY(-50%) !important;
 }
 
+
+/* --- FINAL banner alignment fixes --- */
+
+/* True center for top line text */
+.banner-topline{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+}
+.banner-topline .topline-center{
+  margin:0 auto !important;
+  text-align:center !important;
+  padding-right:0 !important;
+}
+
+/* Force START button to true upper-right corner */
+.banner-topline .bbtn-story{
+  position:absolute !important;
+  right:16px !important;
+  top:12px !important;
+  transform:none !important;
+}
+
+/* Center RADAR on second row */
+.banner-bottomline{
+  display:flex !important;
+  justify-content:center !important;
+}
+.banner-product{
+  margin:0 auto !important;
+}
+.product-center{
+  text-align:center !important;
+}
+
 </style>
 </head>
 
