@@ -105,6 +105,52 @@
   .leaflet-top.leaflet-right { margin-top: 90px; }   /* push layer toggles below banner */
   #brandLogo { bottom: 26px; right: 26px; }          /* nudge logo down a bit */
 
+
+  /* --- Story panel (Google Sheet driven) --- */
+  #storyPanel{
+    position:absolute;
+    top:90px;
+    left:10px;
+    width:360px;
+    max-width:86vw;
+    max-height: calc(100vh - 120px);
+    overflow:auto;
+    z-index:100001;
+    background:rgba(255,255,255,0.97);
+    border:1px solid rgba(0,0,0,0.18);
+    border-radius:16px;
+    box-shadow: 0 10px 28px rgba(0,0,0,.18);
+    padding:12px 12px 10px 12px;
+    transform: translateX(-110%);
+    transition: transform 180ms ease;
+  }
+  #storyPanel.story-open{ transform: translateX(0); }
+  .story-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .story-title{ font:900 16px/1.15 Arial, sans-serif; letter-spacing:.2px; }
+  .story-close{
+    border:1px solid rgba(0,0,0,.25);
+    background:#fff;
+    border-radius:10px;
+    padding:4px 8px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .story-body{ margin-top:10px; font:700 13px/1.35 Arial, sans-serif; color:#111; }
+  .story-body p{ margin:0 0 10px 0; }
+  .story-media{ margin-top:10px; }
+  .story-media img{ width:100%; border-radius:12px; border:1px solid rgba(0,0,0,0.12); }
+  .story-media iframe{ width:100%; aspect-ratio: 16/9; border:0; border-radius:12px; }
+  .story-nav{ display:flex; justify-content:space-between; gap:10px; margin-top:10px; }
+  .story-nav .btn{ flex:1; }
+  #storyStep{ margin-top:8px; }
+  /* Small story "stations" */
+  .story-dot{
+    width:10px;height:10px;border-radius:50%;
+    background:rgba(30,136,229,0.95);
+    border:2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  }
+
 </style>
 </head>
 
@@ -122,6 +168,7 @@
       <div class="bzoom">ZOOM: <span id="zoomLabel">6</span></div>
       <button class="bbtn" id="zoomOutBtn" title="Zoom out">−</button>
       <button class="bbtn" id="zoomInBtn" title="Zoom in">+</button>
+      <button class="bbtn" id="storyToggleBtn" title="Show/hide story">📖 STORY</button>
     </div>
 
     <div id="status" class="bstatus">Loading…</div>
@@ -140,6 +187,22 @@
     </div>
   </div>
 </div>
+
+<div id="storyPanel" aria-label="Story panel">
+  <div class="story-head">
+    <div id="storyTitle" class="story-title">Storm Story</div>
+    <button id="storyCloseBtn" class="story-close" title="Hide story">✕</button>
+  </div>
+  <div id="storyBody" class="story-body">
+    <p class="tiny">Loading story…</p>
+  </div>
+  <div class="story-nav" aria-label="Story navigation">
+    <button class="btn" id="storyPrevBtn" title="Previous story station">◀ Back</button>
+    <button class="btn" id="storyNextBtn" title="Next story station">Next ▶</button>
+  </div>
+  <div id="storyStep" class="tiny"></div>
+</div>
+
 <img id="brandLogo" src="./logo.png" alt="Weather Workshops" />
 <script>
 (function(){
@@ -223,6 +286,181 @@
   addTown("Minneapolis", 44.9778, -93.2650);
   addTown("Kansas City", 39.0997, -94.5786);
   addTown("St. Louis", 38.6270, -90.1994);
+
+
+  // ---------- Story (Google Sheet) ----------
+  var SHEET_ID = "17Hzg7R2fSHJGbOKAKMqG4QAqA1GlSJwFM-SQwPhQObY";
+  var SHEET_TAB = "Sheet1";
+  var storyItems = [];
+  var storyMarkers = [];
+  var storyIndex = 0;
+
+  var storyPanel = document.getElementById("storyPanel");
+  var storyTitleEl = document.getElementById("storyTitle");
+  var storyBodyEl  = document.getElementById("storyBody");
+  var storyStepEl  = document.getElementById("storyStep");
+
+  function storyOpen(){
+    storyPanel.classList.add("story-open");
+    setTimeout(function(){ map.invalidateSize(); }, 220);
+  }
+  function storyClose(){
+    storyPanel.classList.remove("story-open");
+    setTimeout(function(){ map.invalidateSize(); }, 220);
+  }
+  function storyToggle(){
+    if (storyPanel.classList.contains("story-open")) storyClose();
+    else storyOpen();
+  }
+
+  function safeLink(url){
+    if (!url) return "";
+    return String(url).trim();
+  }
+
+  function renderStory(i, panTo){
+    if (!storyItems.length) return;
+    if (i < 0) i = 0;
+    if (i >= storyItems.length) i = storyItems.length - 1;
+    storyIndex = i;
+
+    var item = storyItems[storyIndex];
+    storyTitleEl.textContent = item.title || "Storm Story";
+
+    var html = "";
+    if (item.text) {
+      // Convert newlines to paragraphs
+      var parts = String(item.text).split(/\n+/).filter(Boolean);
+      parts.forEach(function(p){ html += "<p>" + escapeHtml(p) + "</p>"; });
+    } else {
+      html += "<p class='tiny'>No text for this station yet.</p>";
+    }
+
+    var img = safeLink(item.image);
+    var vid = safeLink(item.video);
+
+    if (img) {
+      html += "<div class='story-media'><img src='" + img + "' alt='Story image'></div>";
+    }
+    if (vid) {
+      // Prefer embed links (youtube embed, vimeo embed, etc.)
+      html += "<div class='story-media'><iframe src='" + vid + "' allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture' allowfullscreen></iframe></div>";
+    }
+
+    storyBodyEl.innerHTML = html;
+    storyStepEl.textContent = "Station " + (storyIndex + 1) + " of " + storyItems.length;
+
+    // Highlight markers
+    storyMarkers.forEach(function(m, idx){
+      if (m && m.setStyle) {
+        m.setStyle({ radius: (idx===storyIndex? 9 : 6), opacity: 1, fillOpacity: (idx===storyIndex? 1 : 0.9) });
+      }
+    });
+
+    storyOpen();
+
+    if (panTo && item.lat != null && item.lon != null) {
+      map.panTo([item.lat, item.lon], { animate:true });
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s)
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
+
+  function buildStoryMarkers(){
+    // Remove existing
+    storyMarkers.forEach(function(m){ try{ map.removeLayer(m); }catch(e){} });
+    storyMarkers = [];
+
+    storyItems.forEach(function(item, idx){
+      if (typeof item.lat !== "number" || typeof item.lon !== "number") return;
+
+      var m = L.circleMarker([item.lat, item.lon], {
+        radius: 6,
+        color: "rgba(255,255,255,0.95)",
+        weight: 2,
+        fillColor: "rgba(30,136,229,0.95)",
+        fillOpacity: 0.9
+      }).addTo(map);
+
+      m.on("click", function(){
+        renderStory(idx, false);
+      });
+
+      // Short hover tooltip
+      if (item.title) {
+        m.bindTooltip(item.title, { direction:"top", offset:[0,-8], opacity:0.9 });
+      }
+
+      storyMarkers.push(m);
+    });
+
+    // Initial highlight
+    renderStory(0, false);
+  }
+
+  function loadStory(){
+    var url = "https://opensheet.elk.sh/" + SHEET_ID + "/" + encodeURIComponent(SHEET_TAB);
+    fetch(url).then(function(r){
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function(rows){
+      // Normalize rows
+      storyItems = (rows || []).map(function(r){
+        var lat = parseFloat(r.lat);
+        var lon = parseFloat(r.lon);
+        return {
+          id: r.id,
+          title: r.title || "",
+          text: r.text || "",
+          lat: isFinite(lat) ? lat : null,
+          lon: isFinite(lon) ? lon : null,
+          image: r.image || "",
+          video: r.video || "",
+          order: parseFloat(r.order)
+        };
+      })
+      .filter(function(x){ return x.title || x.text || (x.lat!=null && x.lon!=null); })
+      .sort(function(a,b){
+        var ao = isFinite(a.order) ? a.order : 9999;
+        var bo = isFinite(b.order) ? b.order : 9999;
+        return ao - bo;
+      });
+
+      if (!storyItems.length) {
+        storyBodyEl.innerHTML = "<p class='tiny'>No rows found in your Google Sheet tab '" + SHEET_TAB + "'.</p>";
+        return;
+      }
+
+      buildStoryMarkers();
+      setStatus("Story: loaded " + storyItems.length + " stations");
+    }).catch(function(err){
+      storyBodyEl.innerHTML = "<p class='tiny'>Could not load story from Google Sheet. Check that the sheet is published, and the tab name is '" + SHEET_TAB + "'.</p>";
+      setStatus("Story load failed");
+    });
+  }
+
+  // Story UI buttons
+  var storyToggleBtn = document.getElementById("storyToggleBtn");
+  if (storyToggleBtn) storyToggleBtn.onclick = storyToggle;
+
+  var storyCloseBtn = document.getElementById("storyCloseBtn");
+  if (storyCloseBtn) storyCloseBtn.onclick = storyClose;
+
+  var prevBtn = document.getElementById("storyPrevBtn");
+  var nextBtn = document.getElementById("storyNextBtn");
+  if (prevBtn) prevBtn.onclick = function(){ renderStory(storyIndex - 1, true); };
+  if (nextBtn) nextBtn.onclick = function(){ renderStory(storyIndex + 1, true); };
+
+  // Load story now
+  loadStory();
+
 
   map.on("zoomend", function(){
     document.getElementById("zoomLabel").textContent = map.getZoom();
