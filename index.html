@@ -339,6 +339,69 @@ body.student-mode .bstatus { display:none !important; }
 
 /* Keep logo low */
 #brandLogo{bottom:0px !important; right:26px !important;}
+
+/* --- Brand color stripes (from Weather Workshops logo) --- */
+.tvbanner{ position:absolute; }
+.tvbanner::before{
+  content:"";
+  position:absolute;
+  top:0; left:0; right:0;
+  height:4px;
+  background:#2f4e94;
+}
+.tvbanner::after{
+  content:"";
+  position:absolute;
+  bottom:0; left:0; right:0;
+  height:4px;
+  background:#eaB35B;
+}
+
+.tvbanner{position:absolute; top:0; left:0; right:0; z-index:99999; }
+
+
+.banner-topline{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  padding:14px 14px 8px 14px;
+  font-family: Arial, sans-serif;
+  text-transform:uppercase;
+  letter-spacing:.7px;
+  position:relative;
+}
+.banner-topline .topline-center{
+  flex:1;
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+  max-width:1200px;
+  justify-content:center;
+  flex-wrap:wrap;
+  padding-right:190px; /* reserve space so button doesn't overlap text */
+}
+.banner-topline .bbtn-story{
+  position:absolute;
+  right:14px;
+  top:10px;
+}
+
+
+.banner-bottomline{padding:6px 14px 12px 14px;}
+
+
+.map-legend{
+  right:12px !important;
+  bottom:70px !important;
+  padding:7px 9px !important;
+  border-radius:12px !important;
+}
+.leg-mini-bar{width:120px !important;}
+
+
+#brandLogo{bottom:0px !important; right:14px !important;}
+
 </style>
 </head>
 
@@ -372,7 +435,7 @@ body.student-mode .bstatus { display:none !important; }
       <span class="top-sep">—</span>
       <span class="top-question"><span class="top-q-label">Question:</span> How can we use real-time weather data to make safer decisions?</span>
     </div>
-  </div>
+    </div>
 
   <div class="banner-bottomline">
     <div class="bottomline-center">
