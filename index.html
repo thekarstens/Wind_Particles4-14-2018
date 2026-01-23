@@ -6,7 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <link rel="stylesheet" href="./leaflet.css"/>
-<script src="./leaflet.js"></script>
+<script src="./leaflet.js">
+var storyStarted = false; // do not auto-open storyboard
+</script>
 
 <style>
 html, body { height:100%; margin:0; }
@@ -486,9 +488,9 @@ body.student-mode .bstatus { display:none !important; }
 }
 
 
-/* Slightly tighter banner height */
-.banner-topline{padding:10px 14px 6px 14px !important;}
-.banner-bottomline{padding:4px 14px 8px 14px !important;}
+/* Slightly tighter banner height (small) */
+.banner-topline{padding-top:8px !important; padding-bottom:5px !important;}
+.banner-bottomline{padding-top:3px !important; padding-bottom:7px !important;}
 
 </style>
 </head>
@@ -611,6 +613,21 @@ body.student-mode .bstatus { display:none !important; }
   // ---------- Map ----------
   var map = L.map("map", { zoomControl:true }).setView([43.55, -96.73], 6);
   var zl = document.getElementById("zoomLabel"); if (zl) zl.textContent = map.getZoom();
+  // Thicker state boundaries (no labels)
+  (function(){
+    map.createPane("stateOutlinePane");
+    map.getPane("stateOutlinePane").style.zIndex = 460;
+
+    const outlineUrl = "https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/us-states.json";
+    fetch(outlineUrl).then(r => r.json()).then(gj => {
+      L.geoJSON(gj, {
+        pane: "stateOutlinePane",
+        interactive: false,
+        style: { color: "#555", weight: 2.5, opacity: 0.7, fillOpacity: 0 }
+      }).addTo(map);
+    }).catch(()=>{/* ignore if offline */});
+  })();
+
 
   // Clean base map (no labels)
   var base = L.tileLayer(
@@ -666,7 +683,7 @@ body.student-mode .bstatus { display:none !important; }
   }
   function storyToggle(){
     if (storyPanel.classList.contains("story-open")) storyClose();
-    else storyOpen();
+    else if (storyStarted) { storyOpen(); }
   }
 
   function safeLink(url){
@@ -738,7 +755,7 @@ body.student-mode .bstatus { display:none !important; }
       if (focusRing.bringToFront) focusRing.bringToFront();
     }
 
-    storyOpen();
+    if (storyStarted) { storyOpen(); }
 
     if (panTo && item.lat != null && item.lon != null) {
       map.panTo([item.lat, item.lon], { animate:true });
@@ -830,7 +847,8 @@ body.student-mode .bstatus { display:none !important; }
   
 // Banner actions
 var beginStoryBtn = document.getElementById("beginStoryBtn");
-if (beginStoryBtn) beginStoryBtn.onclick = function(){ renderStory(storyIndex, true); };
+if (beginStoryBtn) beginStoryBtn.onclick = function(){ storyStarted = true;
+    renderStory(storyIndex, true); };
 
 // Student/Teacher mode (Student hides layer toggles + status)
 var modeBtn = document.getElementById("modeBtn");
@@ -946,14 +964,7 @@ if (radarOpacity){
   var alertsEnabled = true;
 
   // Layer control (NO extra base layer picker)
-  
-  // State boundaries / reference layer (like leaflet-test-map12)
-  const stateLines = L.tileLayer(
-    'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places_Alternate/MapServer/tile/{z}/{y}/{x}',
-    { opacity: 0.9, zIndex: 450 }
-  );
-  stateLines.addTo(map);
-
+  // State boundary outline handled via GeoJSON (no labels)
 var overlays = {};
   overlays["Composite Radar (Observed)"] = L.layerGroup(); // placeholder group
 // We'll manage radar ourselves but still expose a checkbox
@@ -1070,42 +1081,6 @@ var overlays = {};
   updateAll();
 
 })();
-
-// START button should launch the storyboard panel (not auto-launch)
-(function(){
-  const btn = document.getElementById("beginStoryBtn");
-  if(!btn) return;
-
-  btn.addEventListener("click", function(){
-    // Try known story open functions (whichever exists in this build)
-    if (typeof openStoryPanel === "function") { openStoryPanel(); return; }
-    if (typeof showStoryPanel === "function") { showStoryPanel(); return; }
-    if (typeof beginStory === "function") { beginStory(); return; }
-    if (typeof startStory === "function") { startStory(); return; }
-
-    // Fallback: just show the panel if it exists
-    const p = document.getElementById("storyPanel");
-    if (p) p.style.display = "block";
-    // And try to go to first station if helper exists
-    if (typeof setStoryStation === "function") setStoryStation(0);
-  });
-})();
-
-
-// Thicker state boundaries (no labels). Safe: only loads if file exists.
-(function(){
-  const url = "us_states.geojson"; // add this file if you want custom state outlines
-  fetch(url).then(r => {
-    if(!r.ok) throw new Error("no states geojson");
-    return r.json();
-  }).then(gj => {
-    const stateOutlines = L.geoJSON(gj, {
-      interactive:false,
-      style: {color:"#666", weight:3, opacity:0.65, fillOpacity:0}
-    }).addTo(map);
-  }).catch(()=>{ /* optional; base map still works */ });
-})();
-
 </script>
 </body>
 </html>
