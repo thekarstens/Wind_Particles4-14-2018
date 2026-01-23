@@ -340,8 +340,8 @@ body.student-mode .bstatus { display:none !important; }
 /* Keep logo low */
 #brandLogo{bottom:0px !important; right:26px !important;}
 
-
-/* --- Brand color stripes adjusted --- */
+/* --- Brand color stripes (from Weather Workshops logo) --- */
+.tvbanner{ position:absolute; }
 .tvbanner::before{
   content:"";
   position:absolute;
@@ -349,14 +349,426 @@ body.student-mode .bstatus { display:none !important; }
   height:4px;
   background:#2f4e94;
 }
-.tvbanner::after{
-  content:"";
+.tvbanner{position:absolute; top:0; left:0; right:0; z-index:99999; }
+
+
+.banner-topline{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  padding:14px 14px 8px 14px;
+  font-family: Arial, sans-serif;
+  text-transform:uppercase;
+  letter-spacing:.7px;
+  position:relative;
+}
+.banner-topline .topline-center{
+  flex:1;
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+  max-width:1200px;
+  justify-content:center;
+  flex-wrap:wrap;
+  padding-right:190px; /* reserve space so button doesn't overlap text */
+}
+.banner-topline .bbtn-story{
   position:absolute;
-  top:58px; left:0; right:0;   /* middle divider */
-  height:3px;
-  background:#eab35b;
+  right:14px;
+  top:10px;
 }
 
+
+.banner-bottomline{padding:6px 14px 12px 14px;}
+
+
+.map-legend{
+  right:12px !important;
+  bottom:70px !important;
+  padding:7px 9px !important;
+  border-radius:12px !important;
+}
+.leg-mini-bar{width:120px !important;}
+
+
+#brandLogo{bottom:0px !important; right:14px !important;}
+
+
+/* Pin START button in top-right of the top banner line */
+.banner-topline{position:relative !important;}
+.banner-topline > .bbtn-story{
+  position:absolute !important;
+  right:14px !important;
+  top:10px !important;
+}
+
+
+/* Orange divider line in the middle (between top line and controls line) */
+.banner-divider{
+  height:3px;
+  width:100%;
+  background:#eab35b; /* brand orange */
+  opacity:0.95;
+}
+
+
+/* Nudge legend tighter into the corner */
+.map-legend{right:10px !important; bottom:62px !important;}
+
+</style>
+</head>
+
+<body>
+<div id="map"></div>
+<div id="mapLegend" class="map-legend" title="Radar reflectivity">
+  <div class="map-legend-row">
+    <span class="leg-mini-label">Light</span>
+    <span class="leg-mini-bar" aria-hidden="true"></span>
+    <span class="leg-mini-label">Heavy</span>
+  </div>
+</div>
+<div id="storyPanel" aria-label="Story panel">
+  <div class="story-head">
+    <div class="story-title" id="storyTitle">Story</div>
+    <button class="story-close" id="storyCloseBtn" title="Close">✕</button>
+  </div>
+  <div class="story-body" id="storyBody">
+    <p class="tiny">Loading story…</p>
+  </div>
+  <div class="story-nav">
+    <button class="btn" id="storyPrevBtn">Back</button>
+    <button class="btn" id="storyNextBtn">Next</button>
+  </div>
+  <div class="tiny" id="storyStep"></div>
+</div>
+<div id="banner" class="tvbanner">
+  <div class="banner-topline" role="banner">
+    <div class="topline-center">
+      <span class="top-lesson">Lesson 1: Driving Question</span>
+      <span class="top-sep">—</span>
+      <span class="top-question"><span class="top-q-label">Question:</span> How can we use real-time weather data to make safer decisions?</span>
+    </div>
+    </div>
+  <div class="banner-divider" aria-hidden="true"></div>
+
+  <div class="banner-bottomline">
+    <div class="bottomline-center">
+      <button class="bbtn bbtn-story" id="beginStoryBtn" title="Begin the guided story">START</button>
+      <button class="bbtn" id="modeBtn" title="Toggle Student / Teacher mode">STUDENT</button>
+
+      <div class="opacity-wrap" title="Radar opacity">
+        <span class="op-label">Opacity</span>
+        <input id="radarOpacity" type="range" min="20" max="100" value="70" />
+      </div>
+
+      <div class="banner-product" aria-label="Product shown">
+        <div class="product-center" id="productLabel">RADAR</div>
+      </div>
+
+      <div class="time-controls" aria-label="Time controls">
+        <button class="bbtn" id="bBackBtn" title="Back 3 hours">◀</button>
+        <div class="btime" id="bannerTimeLabel">April 14, 2018 7AM</div>
+        <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
+      </div>
+
+      <button class="bbtn" id="zoomOutBtn" title="Zoom out">−</button>
+      <button class="bbtn" id="zoomInBtn" title="Zoom in">+</button>
+    </div>
+  </div>
+
+  <div id="status" class="bstatus" style="display:none;"></div>
+</div>
+
+<img id="brandLogo" src="./logo.png" alt="Weather Workshops" />
+<script>
+(function(){
+  // ---------- Config ----------
+  var STEP_HOURS = 3;
+
+  // Use the same starting time as your case study controls:
+  // 2018-04-14 12Z (7am Central daylight). We'll label it "CST" per your preference.
+  var startZ = new Date(Date.UTC(2018, 3, 14, 12, 0, 0)); // months are 0-based; 3 = April
+  var endZ   = new Date(Date.UTC(2018, 3, 15, 12, 0, 0)); // 24h window; extend later if you want
+  var curZ = new Date(startZ.getTime());
+
+  // Composite radar geographic extent (NAD83 geographic). Shifted ~60mi south + ~15mi east for better fit.
+  // Base extent commonly used by IEM mosaics: lon -126..-66, lat 24..50
+  var SHIFT_LAT = -1.09; // south shift (~15mi extra)   // south
+  var SHIFT_LON = 0.49; // east shift (~15mi extra)   // east
+  var RADAR_BOUNDS = L.latLngBounds(
+    L.latLng(24 + SHIFT_LAT, -126 + SHIFT_LON),
+    L.latLng(50 + SHIFT_LAT,  -66 + SHIFT_LON)
+  );
+
+  // Local file pattern in your repo:
+  // radar_frames/n0q_201804141200.png, etc
+  function pad2(n){ return (n<10?'0':'') + n; }
+  function yyyymmdd(d){
+    return d.getUTCFullYear() + pad2(d.getUTCMonth()+1) + pad2(d.getUTCDate());
+  }
+  function hhmm(d){
+    return pad2(d.getUTCHours()) + pad2(d.getUTCMinutes());
+  }
+  function radarUrlFor(d){
+    return "radar_frames/n0q_" + yyyymmdd(d) + hhmm(d) + ".png";
+  }
+
+  // Alerts file pattern you already have:
+  // timeline_hourly/alerts_20180414_1500Z.geojson
+  function alertsUrlFor(d){
+    return "timeline_hourly/alerts_" + yyyymmdd(d) + "_" + pad2(d.getUTCHours()) + "00Z.geojson";
+  }
+
+  // "Central time" label (forced) — we just subtract 5 hours and show CST
+  // (Technically CDT for April, but your students don't need DST complexity here.)
+  function formatCentralLabel(d) {
+  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const m = months[d.getMonth()];
+  const day = d.getDate();
+  const year = d.getFullYear();
+  let hr = d.getHours();
+  const ampm = hr >= 12 ? "PM" : "AM";
+  hr = hr % 12; if (hr === 0) hr = 12;
+  // e.g. "Apr 14, 2018 7AM"
+  return `${m} ${day}, ${year} ${hr}${ampm}`;
+}
+
+  // ---------- Map ----------
+  var map = L.map("map", { zoomControl:true }).setView([43.55, -96.73], 6);
+  var zl = document.getElementById("zoomLabel"); if (zl) zl.textContent = map.getZoom();
+
+  // Clean base map (no labels)
+  var base = L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+    { attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains:"abcd", maxZoom: 19 }
+  ).addTo(map);
+
+  // Optional labels (kept on top to help students)
+  var labels = L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+    { attribution: "", subdomains:"abcd", maxZoom: 19, pane: "overlayPane" }
+  ).addTo(map);
+
+  // Town labels
+  function addTown(name, lat, lon){
+    L.marker([lat, lon], {
+      icon: L.divIcon({ className:"town-label", html: name, iconSize: null }),
+      interactive:false
+    }).addTo(map);
+  }
+  addTown("Sioux Falls", 43.55, -96.73);
+  addTown("Rapid City", 44.0805, -103.2310);
+  addTown("Denver", 39.7392, -104.9903);
+  addTown("Omaha", 41.2565, -95.9345);
+  addTown("Des Moines", 41.5868, -93.6250);
+  addTown("Minneapolis", 44.9778, -93.2650);
+  addTown("Kansas City", 39.0997, -94.5786);
+  addTown("St. Louis", 38.6270, -90.1994);
+
+
+  // ---------- Story (Google Sheet) ----------
+  var SHEET_ID = "17Hzg7R2fSHJGbOKAKMqG4QAqA1GlSJwFM-SQwPhQObY";
+  var SHEET_TAB = "April Blizzard Story";
+  var storyItems = [];
+  var storyMarkers = [];
+  var storyIndex = 0;
+  var focusRing = null;
+
+  var storyPanel = document.getElementById("storyPanel");
+  var storyTitleEl = document.getElementById("storyTitle");
+  var storyBodyEl  = document.getElementById("storyBody");
+  var storyStepEl  = document.getElementById("storyStep");
+
+  function storyOpen(){
+    if (!storyPanel) return; storyPanel.classList.add("story-open");
+    var legendPop = document.getElementById("legendPop");
+    if (legendPop) legendPop.classList.add("hidden");
+    setTimeout(function(){ map.invalidateSize(); }, 220);
+  }
+  function storyClose(){
+    if (!storyPanel) return; storyPanel.classList.remove("story-open");
+    setTimeout(function(){ map.invalidateSize(); }, 220);
+  }
+  function storyToggle(){
+    if (storyPanel.classList.contains("story-open")) storyClose();
+    else storyOpen();
+  }
+
+  function safeLink(url){
+    if (!url) return "";
+    return String(url).trim();
+  }
+
+  function renderStory(i, panTo){
+    if (!storyItems.length) return;
+    if (i < 0) i = 0;
+    if (i >= storyItems.length) i = storyItems.length - 1;
+    storyIndex = i;
+
+    var item = storyItems[storyIndex];
+    storyTitleEl.textContent = item.title || "Storm Story";
+
+    var html = "";
+    if (item.text) {
+      // Convert newlines to paragraphs
+      var parts = String(item.text).split(/\n+/).filter(Boolean);
+      parts.forEach(function(p){ html += "<p>" + escapeHtml(p) + "</p>"; });
+    } else {
+      html += "<p class='tiny'>No text for this station yet.</p>";
+    }
+
+    var img = safeLink(item.image);
+    var vid = safeLink(item.video);
+
+    if (img) {
+      html += "<div class='story-media'><img src='" + img + "' alt='Story image'></div>";
+    }
+    if (vid) {
+      // Prefer embed links (youtube embed, vimeo embed, etc.)
+      html += "<div class='story-media'><iframe src='" + vid + "' allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture' allowfullscreen></iframe></div>";
+    }
+
+    storyBodyEl.innerHTML = html;
+    storyStepEl.textContent = "Station " + (storyIndex + 1) + " of " + storyItems.length;
+
+    // Highlight markers
+    storyMarkers.forEach(function(m, idx){
+      if (m && m.setStyle) {
+        m.setStyle({
+          radius: (idx===storyIndex? 12 : 8),
+          opacity: 1,
+          fillOpacity: (idx===storyIndex? 1 : 0.9),
+          weight: (idx===storyIndex? 3 : 2)
+        });
+        if (idx===storyIndex && m.bringToFront) m.bringToFront();
+      }
+    });
+
+    // Focus ring around the active station (helps guide attention)
+    if (typeof item.lat === "number" && typeof item.lon === "number") {
+      var ringRadiusM = 22000; // ~14 miles
+      if (!focusRing) {
+        focusRing = L.circle([item.lat, item.lon], {
+          radius: ringRadiusM,
+          color: "rgba(30,136,229,0.95)",
+          weight: 2,
+          opacity: 0.95,
+          fill: false,
+          dashArray: "6 6"
+        }).addTo(map);
+      } else {
+        focusRing.setLatLng([item.lat, item.lon]);
+        focusRing.setRadius(ringRadiusM);
+      }
+      if (focusRing.bringToFront) focusRing.bringToFront();
+    }
+
+    storyOpen();
+
+    if (panTo && item.lat != null && item.lon != null) {
+      map.panTo([item.lat, item.lon], { animate:true });
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s)
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
+
+  function buildStoryMarkers(){
+    // Remove existing
+    storyMarkers.forEach(function(m){ try{ map.removeLayer(m); }catch(e){} });
+    storyMarkers = [];
+
+    storyItems.forEach(function(item, idx){
+      if (typeof item.lat !== "number" || typeof item.lon !== "number") return;
+
+      var m = L.circleMarker([item.lat, item.lon], {
+        radius: 8,
+        color: "rgba(255,255,255,0.95)",
+        weight: 2,
+        fillColor: "rgba(30,136,229,0.95)",
+        fillOpacity: 0.9
+      }).addTo(map);
+
+      m.on("click", function(){
+        renderStory(idx, false);
+      });
+
+      // Short hover tooltip
+      if (item.title) {
+        m.bindTooltip(item.title, { direction:"top", offset:[0,-8], opacity:0.9 });
+      }
+
+      storyMarkers.push(m);
+    });
+
+    // Initial highlight
+    renderStory(0, false);
+  }
+
+  function loadStory(){
+    var url = "https://opensheet.elk.sh/" + SHEET_ID + "/" + encodeURIComponent(SHEET_TAB);
+    fetch(url).then(function(r){
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function(rows){
+      // Normalize rows
+      storyItems = (rows || []).map(function(r){
+        var lat = parseFloat(r.lat);
+        var lon = parseFloat(r.lon);
+        return {
+          id: r.id,
+          title: r.title || "",
+          text: r.text || "",
+          lat: isFinite(lat) ? lat : null,
+          lon: isFinite(lon) ? lon : null,
+          image: r.image || "",
+          video: r.video || "",
+          order: parseFloat(r.order)
+        };
+      })
+      .filter(function(x){ return x.title || x.text || (x.lat!=null && x.lon!=null); })
+      .sort(function(a,b){
+        var ao = isFinite(a.order) ? a.order : 9999;
+        var bo = isFinite(b.order) ? b.order : 9999;
+        return ao - bo;
+      });
+
+      if (!storyItems.length) {
+        storyBodyEl.innerHTML = "<p class='tiny'>No rows found in your Google Sheet tab '" + SHEET_TAB + "'.</p>";
+        return;
+      }
+
+      buildStoryMarkers();
+      setStatus("Story: loaded " + storyItems.length + " stations");
+    }).catch(function(err){
+      storyBodyEl.innerHTML = "<p class='tiny'>Could not load story from Google Sheet. Check that the sheet is published, and the tab name is '" + SHEET_TAB + "'.</p>";
+      setStatus("Story load failed");
+    });
+  }
+
+  
+// Banner actions
+var beginStoryBtn = document.getElementById("beginStoryBtn");
+if (beginStoryBtn) beginStoryBtn.onclick = function(){ renderStory(storyIndex, true); };
+
+// Student/Teacher mode (Student hides layer toggles + status)
+var modeBtn = document.getElementById("modeBtn");
+function setMode(mode){
+  if (mode === "teacher"){
+    document.body.classList.remove("student-mode");
+    if (modeBtn) modeBtn.textContent = "TEACHER";
+  } else {
+    document.body.classList.add("student-mode");
+    if (modeBtn) modeBtn.textContent = "STUDENT";
+  }
+}
 if (modeBtn){
   modeBtn.onclick = function(){
     var isStudent = document.body.classList.contains("student-mode");
