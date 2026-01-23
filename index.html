@@ -9,769 +9,104 @@
 <script src="./leaflet.js"></script>
 
 <style>
-  html, body { height:100%; margin:0; }
-  #map { height:100%; background:#fff; }
+html, body { height:100%; margin:0; }
+#map { height:100%; background:#fff; }
 
-  /* --- Top banner (student-friendly) --- */
-  .tvbanner{
-    position:absolute; top:0; left:0; right:0;
-    z-index:99999;
-    background:rgba(11,28,45,0.94);
-    color:#fff;
-    border-bottom:2px solid rgba(255,255,255,0.12);
-    pointer-events:auto;
-  }
-  .banner-inner{
-    height:78px;
-    display:flex;
-    align-items:center;
-    gap:14px;
-    padding:10px 14px;
-    font-family: Arial, sans-serif;
-    text-transform:uppercase;
-    letter-spacing:.6px;
-  }
+.tvbanner{
+  position:absolute; top:0; left:0; right:0;
+  z-index:99999;
+  background:rgba(11,28,45,0.94);
+  color:#fff;
+  border-bottom:2px solid rgba(255,255,255,0.12);
+}
+.banner-inner{
+  height:78px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:10px 14px;
+  font-family: Arial, sans-serif;
+  text-transform:uppercase;
+}
 
-  /* Left: lesson + driving question */
-  .banner-left{
-    display:flex;
-    flex-direction:column;
-    gap:4px;
-    min-width: 420px;
-    max-width: 55vw;
-  }
-  .lesson-line{
-    font-weight:900;
-    font-size:22px;
-    line-height:1.05;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-  .dq-line{
-    font-weight:800;
-    font-size:12px;
-    line-height:1.1;
-    opacity:.95;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-  .dq-line span{ font-weight:900; opacity:1; }
+#brandLogo{
+  position:absolute;
+  bottom:36px;
+  right:18px;
+  width:210px;
+  pointer-events:none;
+}
 
-  /* Middle: time controls */
-  .banner-mid{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    flex: 1 1 auto;
-    justify-content:center;
-    min-width: 300px;
-  }
-  .bbtn{
-    border:1px solid rgba(255,255,255,0.35);
-    background:rgba(0,0,0,0.25);
-    color:#fff;
-    padding:7px 10px;
-    border-radius:10px;
-    font-weight:900;
-    cursor:pointer;
-    line-height:1;
-    letter-spacing:.6px;
-  }
-  .bbtn:hover{ background:rgba(0,0,0,0.40); }
-  .btime{
-    min-width:210px;
-    text-align:center;
-    font-weight:900;
-    font-size:16px;
-    letter-spacing:.4px;
-    padding:0 6px;
-    white-space:nowrap;
-  }
+.story-btn{font-size:15px;font-weight:900;padding:10px 14px}
+.leg-bar{
+  width:120px;height:10px;border-radius:6px;
+  background:linear-gradient(90deg,#2b83ba,#ffd166,#ef476f);
+}
 
-  /* Right: product + legend + actions */
-  .banner-right{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    justify-content:flex-end;
-    min-width: 420px;
-  }
-  .product-block{
-    display:flex;
-    flex-direction:column;
-    align-items:flex-end;
-    gap:4px;
-    min-width: 170px;
-  }
-  .product-title{
-    font-weight:900;
-    font-size:32px;
-    line-height:1;
-    letter-spacing:1px;
-    white-space:nowrap;
-  }
-  .product-sub{
-    font-weight:800;
-    font-size:11px;
-    opacity:.9;
-    white-space:nowrap;
-  }
-
-  /* Simple legend always-on */
-  .mini-legend{
-    display:flex;
-    align-items:center;
-    gap:8px;
-  }
-  .leg-text{
-    font-weight:900;
-    font-size:12px;
-    opacity:.95;
-    white-space:nowrap;
-  }
-  .leg-bar{
-    width:120px;
-    height:10px;
-    border-radius:6px;
-    border:1px solid rgba(255,255,255,0.25);
-    background: linear-gradient(90deg, rgba(43,131,186,1) 0%, rgba(255,209,102,1) 55%, rgba(239,71,111,1) 100%);
-  }
-
-  /* Radar opacity slider */
-  .op-block{
-    display:flex;
-    align-items:center;
-    gap:8px;
-  }
-  .op-label{
-    font-weight:900;
-    font-size:11px;
-    opacity:.9;
-    white-space:nowrap;
-  }
-  #radarOpacity{
-    width:110px;
-    accent-color: #ffffff;
-  }
-
-  .banner-actions{
-    display:flex;
-    align-items:center;
-    gap:8px;
-  }
-  /* Big obvious story button */
-  .story-btn{
-    border:1px solid rgba(255,255,255,0.55);
-    background:rgba(0,0,0,0.28);
-    color:#fff;
-    padding:10px 14px;
-    border-radius:12px;
-    font-weight:900;
-    font-size:15px;
-    letter-spacing:1px;
-    cursor:pointer;
-  }
-  .story-btn:hover{ background:rgba(0,0,0,0.42); }
-
-  .statusline{
-    position:absolute;
-    top:78px;
-    left:14px;
-    right:14px;
-    z-index:99998;
-    font:800 12px/1 Arial, sans-serif;
-    color:#fff;
-    opacity:.86;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    pointer-events:none;
-  }
-
-  /* Leaflet layer control nudged below banner */
-  .leaflet-top.leaflet-right { margin-top: 96px; }
-
-  /* Branding logo (bottom-right) */
-  #brandLogo{
-    position:absolute;
-    bottom:18px;
-    right:18px;
-    z-index:900;
-    width:210px;
-    max-width:28vw;
-    height:auto;
-    opacity:0.95;
-    filter: drop-shadow(0 3px 10px rgba(0,0,0,0.35));
-    pointer-events:none;
-  }
-
-  /* Simple town label style */
-  .town-label{
-    background: rgba(255,255,255,0.78);
-    border:1px solid rgba(0,0,0,0.28);
-    padding:2px 6px;
-    border-radius:10px;
-    font:900 11px/1 Arial, sans-serif;
-    box-shadow: 0 1px 4px rgba(0,0,0,.15);
-  }
-
-  /* --- Story panel (Google Sheet driven) --- */
-  #storyPanel{
-    position:absolute;
-    top:96px;
-    left:10px;
-    width:370px;
-    max-width:86vw;
-    max-height: calc(100vh - 120px);
-    overflow:auto;
-    z-index:100001;
-    background:rgba(255,255,255,0.97);
-    border:1px solid rgba(0,0,0,0.18);
-    border-radius:16px;
-    box-shadow: 0 10px 28px rgba(0,0,0,.18);
-    padding:12px 12px 10px 12px;
-    transform: translateX(-110%);
-    transition: transform 180ms ease;
-  }
-  #storyPanel.story-open{ transform: translateX(0); }
-  .story-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-  .story-title{ font:900 16px/1.15 Arial, sans-serif; letter-spacing:.2px; }
-  .story-close{
-    border:1px solid rgba(0,0,0,.25);
-    background:#fff;
-    border-radius:10px;
-    padding:4px 8px;
-    font-weight:900;
-    cursor:pointer;
-  }
-  .story-body{ margin-top:10px; font:700 13px/1.35 Arial, sans-serif; color:#111; }
-  .story-body p{ margin:0 0 10px 0; }
-  .story-media{ margin-top:10px; }
-  .story-media img{ width:100%; border-radius:12px; border:1px solid rgba(0,0,0,0.12); }
-  .story-media iframe{ width:100%; aspect-ratio: 16/9; border:0; border-radius:12px; }
-  .story-media video{ width:100%; border-radius:12px; border:1px solid rgba(0,0,0,0.12); }
-  .story-nav{ display:flex; justify-content:space-between; gap:10px; margin-top:10px; }
-  .story-nav button{ flex:1; }
-  .story-mini{ font:900 11px/1 Arial, sans-serif; opacity:.72; margin-top:8px; }
-
+#storyPanel{
+  position:absolute;top:96px;left:10px;
+  width:360px;background:#fff;border-radius:14px;
+  padding:12px;transform:translateX(-110%);
+  transition:.2s;
+}
+#storyPanel.story-open{transform:translateX(0)}
 </style>
 </head>
 
 <body>
 <div id="map"></div>
 
-<div id="banner" class="tvbanner">
+<div class="tvbanner">
   <div class="banner-inner">
-    <div class="banner-left">
-      <div class="lesson-line" id="lessonLine">Lesson 1: Driving Question</div>
-      <div class="dq-line"><span>Question:</span> <span id="drivingQuestion">How can we use real-time weather data to make safer decisions?</span></div>
+    <div>
+      <div style="font-weight:900;font-size:22px">Lesson 1: Driving Question</div>
+      <div style="font-size:12px">How can we use real-time weather data to make safer decisions?</div>
     </div>
-
-    <div class="banner-mid" aria-label="Time controls">
-      <button class="bbtn" id="bBackBtn" title="Back 3 hours">◀</button>
-      <div class="btime" id="bannerTimeLabel">April 14, 2018 7AM</div>
-      <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
-      <button class="bbtn" id="zoomOutBtn" title="Zoom out">−</button>
-      <button class="bbtn" id="zoomInBtn" title="Zoom in">+</button>
+    <div style="flex:1;text-align:center">
+      <button id="bBackBtn">◀</button>
+      <span id="bannerTimeLabel">April 14, 2018 7AM</span>
+      <button id="bFwdBtn">▶</button>
     </div>
-
-    <div class="banner-right" aria-label="Right controls">
-      <div class="mini-legend" aria-label="Radar legend">
-        <div class="leg-text">Light</div>
-        <div class="leg-bar" title="Reflectivity intensity"></div>
-        <div class="leg-text">Heavy</div>
-      </div>
-
-      <div class="op-block" title="Radar opacity">
-        <div class="op-label">Radar</div>
-        <input id="radarOpacity" type="range" min="0" max="100" value="70" />
-      </div>
-
-      <div class="product-block">
-        <div class="product-title" id="productLabel">RADAR</div>
-        <div class="product-sub" id="productDate">April 2018</div>
-      </div>
-
-      <div class="banner-actions">
-        <button class="story-btn" id="storyToggleBtn" title="Begin or hide the story">BEGIN STORY</button>
-      </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span>Light</span><div class="leg-bar"></div><span>Heavy</span>
+      <input id="radarOpacity" type="range" min="0" max="100" value="70"/>
+      <div style="font-size:32px;font-weight:900">RADAR</div>
+      <button class="story-btn" id="storyToggleBtn">BEGIN STORY</button>
     </div>
   </div>
 </div>
 
-<div id="status" class="statusline">Loading…</div>
-
-<!-- Story Panel markup (was missing; required for Story to work) -->
-<div id="storyPanel" aria-label="Story panel">
-  <div class="story-head">
-    <div class="story-title" id="storyTitle">Storm Story</div>
-    <button class="story-close" id="storyCloseBtn" title="Close">✕</button>
-  </div>
-  <div class="story-body" id="storyBody"></div>
-  <div class="story-nav">
-    <button class="bbtn" id="storyPrevBtn" title="Previous station">◀ Back</button>
-    <button class="bbtn" id="storyNextBtn" title="Next station">Next ▶</button>
-  </div>
-  <div class="story-mini" id="storyStep"></div>
+<div id="storyPanel">
+  <h3>Storm Story</h3>
+  <p>Story content loads from Google Sheets.</p>
 </div>
 
-<img id="brandLogo" src="./logo.png" alt="Weather Workshops" />
+<img id="brandLogo" src="./logo.png"/>
 
 <script>
-(function(){
-  // ---------- Config ----------
-  var STEP_HOURS = 3;
+var map=L.map("map").setView([43.55,-96.73],6);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+{attribution:"© OSM"}).addTo(map);
 
-  // 2018-04-14 12Z = ~7AM Central (we're intentionally ignoring DST complexity for students)
-  var startZ = new Date(Date.UTC(2018, 3, 14, 12, 0, 0));
-  var endZ   = new Date(Date.UTC(2018, 3, 15, 12, 0, 0));
-  var curZ = new Date(startZ.getTime());
+var radar=null,opacity=0.7;
+function drawRadar(){
+ if(radar) map.removeLayer(radar);
+ radar=L.imageOverlay("radar_frames/n0q_201804141200.png",[[24,-126],[50,-66]],{opacity:opacity}).addTo(map);
+}
+drawRadar();
 
-  // Composite radar extent (shifted to better match)
-  var SHIFT_LAT = -1.09;
-  var SHIFT_LON = 0.49;
-  var RADAR_BOUNDS = L.latLngBounds(
-    L.latLng(24 + SHIFT_LAT, -126 + SHIFT_LON),
-    L.latLng(50 + SHIFT_LAT,  -66 + SHIFT_LON)
-  );
+document.getElementById("radarOpacity").oninput=e=>{
+ opacity=e.target.value/100;
+ if(radar) radar.setOpacity(opacity);
+};
 
-  function pad2(n){ return (n<10?'0':'') + n; }
-  function yyyymmdd(d){
-    return d.getUTCFullYear() + pad2(d.getUTCMonth()+1) + pad2(d.getUTCDate());
-  }
-  function hhmm(d){
-    return pad2(d.getUTCHours()) + pad2(d.getUTCMinutes());
-  }
-  function radarUrlFor(d){
-    return "radar_frames/n0q_" + yyyymmdd(d) + hhmm(d) + ".png";
-  }
-  function alertsUrlFor(d){
-    return "timeline_hourly/alerts_" + yyyymmdd(d) + "_" + pad2(d.getUTCHours()) + "00Z.geojson";
-  }
+var alerts=L.geoJSON(null,{style:{color:"#d81b60",weight:2,fillOpacity:.25}}).addTo(map);
+fetch("timeline_hourly/alerts_20180414_1200Z.geojson")
+ .then(r=>r.json()).then(g=>alerts.addData(g));
 
-  // Full month name (spell out April)
-  function formatCentralLabel(d) {
-    var months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    var m = months[d.getMonth()];
-    var day = d.getDate();
-    var year = d.getFullYear();
-    var hr = d.getHours();
-    var ampm = hr >= 12 ? "PM" : "AM";
-    hr = hr % 12; if (hr === 0) hr = 12;
-    return m + " " + day + ", " + year + " " + hr + ampm;
-  }
-
-  function setStatus(s){
-    var el = document.getElementById("status");
-    if (el) el.textContent = s;
-  }
-
-  // ---------- Map ----------
-  var map = L.map("map", { zoomControl:true }).setView([43.55, -96.73], 6);
-
-  // Base map (clean)
-  L.tileLayer(
-    "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
-    { attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains:"abcd", maxZoom: 19 }
-  ).addTo(map);
-
-  // Labels on top
-  L.tileLayer(
-    "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
-    { attribution: "", subdomains:"abcd", maxZoom: 19, pane: "overlayPane" }
-  ).addTo(map);
-
-  // Thicker-looking state lines: keep as always-on overlay (NOT in toggle box)
-  // (This is a tiled reference layer; we increase opacity so boundaries are clearer.)
-  L.tileLayer(
-    "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places_Alternate/MapServer/tile/{z}/{y}/{x}",
-    { opacity: 0.85 }
-  ).addTo(map);
-
-  // Town labels
-  function addTown(name, lat, lon){
-    L.marker([lat, lon], {
-      icon: L.divIcon({ className:"town-label", html: name, iconSize: null }),
-      interactive:false
-    }).addTo(map);
-  }
-  addTown("Sioux Falls", 43.55, -96.73);
-  addTown("Omaha", 41.2565, -95.9345);
-  addTown("Des Moines", 41.5868, -93.6250);
-  addTown("Minneapolis", 44.9778, -93.2650);
-  addTown("Kansas City", 39.0997, -94.5786);
-  addTown("St. Louis", 38.6270, -90.1994);
-
-  // ---------- Radar overlay ----------
-  var obsRadarOverlay = null;
-  var obsRadarEnabled = true;
-  var radarOpacity = 0.70;
-
-  function applyRadarOpacity(){
-    if (obsRadarOverlay && obsRadarOverlay.setOpacity) obsRadarOverlay.setOpacity(radarOpacity);
-  }
-
-  var op = document.getElementById("radarOpacity");
-  if (op){
-    op.addEventListener("input", function(){
-      radarOpacity = Math.max(0, Math.min(1, (parseFloat(op.value) || 0)/100));
-      applyRadarOpacity();
-    });
-  }
-
-  // ---------- Alerts overlay ----------
-  var alertsEnabled = false;
-
-  var alertsLayer = L.geoJSON(null, {
-    filter: function(f){
-      var p = (f && f.properties) ? f.properties : {};
-      var ev = String(p.event || p.EVENT || p.headline || "").toLowerCase();
-      if (!ev) return false;
-      if (ev.includes("statement") || ev.includes("advisory") || ev.includes("watch")) return false;
-      return ev.includes("warning");
-    },
-    style: function(f){
-      var p = (f && f.properties) ? f.properties : {};
-      var ev = String(p.event || p.EVENT || p.headline || p.phenomena || "").toLowerCase();
-      var phe = String(p.phenomena || p.PHENOM || "").toLowerCase();
-      var sig = String(p.significance || p.SIG || "").toLowerCase();
-      var key = ev || (phe && sig ? (phe + "." + sig) : phe || "");
-
-      var stroke = "#333";
-      var fill = "#333";
-      var has = function(s){ return key.indexOf(s) !== -1; };
-
-      if (has("tornado") || phe==="to") { stroke = fill = "#e53935"; }
-      else if (has("severe thunderstorm") || phe==="sv") { stroke = fill = "#fdd835"; }
-      else if (has("flash flood") || phe==="ff") { stroke = fill = "#00c853"; }
-      else if (has("flood") || phe==="fl") { stroke = fill = "#00a152"; }
-      else if (has("blizzard") || phe==="bz") { stroke = fill = "#d81b60"; }
-      else if (has("winter storm") || phe==="ws") { stroke = fill = "#ff5aa5"; }
-      else if (has("ice storm") || phe==="is") { stroke = fill = "#ff80ab"; }
-      else if (has("winter weather") || phe==="ww") { stroke = fill = "#ad1457"; }
-      else if (has("high wind") || phe==="hw") { stroke = fill = "#ff6f00"; }
-      else if (has("dense fog") || phe==="fg") { stroke = fill = "#90a4ae"; }
-
-      return { color: stroke, weight: 2, opacity: 0.9, fillColor: fill, fillOpacity: 0.25 };
-    },
-    onEachFeature: function(f, layer){
-      var props = f.properties || {};
-      var title = props.event || props.headline || props.phenomena || "Alert";
-      layer.bindPopup("<b>"+title+"</b>");
-    }
-  });
-
-  // ---------- Layer control (only what you want) ----------
-  var overlays = {};
-  overlays["Composite Radar (Observed)"] = L.layerGroup(); // placeholder for checkbox
-  overlays["Alerts (WWA)"] = alertsLayer;
-
-  var lc = L.control.layers(null, overlays, { collapsed:false }).addTo(map);
-
-  // Hide the empty base-layer section
-  setTimeout(function(){
-    var el = document.querySelector(".leaflet-control-layers-base");
-    if (el) el.style.display = "none";
-  }, 50);
-
-  function setProductLabel(){
-    var p = document.getElementById("productLabel");
-    if (!p) return;
-    p.textContent = obsRadarEnabled ? "RADAR" : "MAP";
-  }
-
-  // Default radar checkbox ON in the UI
-  (function forceRadarChecked(){
-    var inputs = document.querySelectorAll(".leaflet-control-layers-overlays input");
-    for (var i=0;i<inputs.length;i++){
-      var label = (inputs[i].parentElement && inputs[i].parentElement.textContent) ? inputs[i].parentElement.textContent : "";
-      if (label.indexOf("Composite Radar") !== -1){
-        inputs[i].checked = true;
-      }
-    }
-  })();
-
-  // Handle layer checkbox toggles
-  map.on("overlayadd", function(e){
-    if (e.name === "Alerts (WWA)") { alertsEnabled = true; updateAlerts(); }
-    if (e.name === "Composite Radar (Observed)") { obsRadarEnabled = true; updateRadar(); setProductLabel(); }
-  });
-  map.on("overlayremove", function(e){
-    if (e.name === "Alerts (WWA)") { alertsEnabled = false; alertsLayer.clearLayers(); }
-    if (e.name === "Composite Radar (Observed)") {
-      obsRadarEnabled = false;
-      if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); }
-      setProductLabel();
-    }
-  });
-
-  // ---------- Updaters ----------
-  function setTimeLabel(){
-    var el = document.getElementById("bannerTimeLabel");
-    if (el) el.textContent = formatCentralLabel(curZ);
-  }
-
-  function updateRadar(){
-    if (!obsRadarEnabled) return;
-    var url = radarUrlFor(curZ);
-
-    var img = new Image();
-    img.onload = function(){
-      if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); }
-      obsRadarOverlay = L.imageOverlay(url, RADAR_BOUNDS, { opacity: radarOpacity, interactive:false });
-      obsRadarOverlay.addTo(map);
-      setStatus("Radar: " + url);
-    };
-    img.onerror = function(){
-      setStatus("Radar missing: " + url + " (check /radar_frames/)");
-    };
-    img.src = url;
-  }
-
-  function updateAlerts(){
-    if (!alertsEnabled) return;
-    var url = alertsUrlFor(curZ);
-    fetch(url).then(function(r){
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    }).then(function(gj){
-      alertsLayer.clearLayers();
-      alertsLayer.addData(gj);
-      if (!map.hasLayer(alertsLayer)) alertsLayer.addTo(map);
-      setStatus("Alerts: " + url);
-    }).catch(function(){
-      alertsLayer.clearLayers();
-      setStatus("Alerts missing: " + url);
-    });
-  }
-
-  function updateAll(){
-    setTimeLabel();
-    updateRadar();
-    updateAlerts();
-  }
-
-  // ---------- Time controls ----------
-  function clampTime(){
-    if (curZ < startZ) curZ = new Date(startZ.getTime());
-    if (curZ > endZ) curZ = new Date(endZ.getTime());
-  }
-
-  document.getElementById('bBackBtn').onclick = function(){
-    curZ = new Date(curZ.getTime() - STEP_HOURS*3600*1000);
-    clampTime(); updateAll();
-  };
-  document.getElementById('bFwdBtn').onclick = function(){
-    curZ = new Date(curZ.getTime() + STEP_HOURS*3600*1000);
-    clampTime(); updateAll();
-  };
-
-  var zIn = document.getElementById("zoomInBtn");
-  var zOut = document.getElementById("zoomOutBtn");
-  if (zIn) zIn.onclick = function(){ map.zoomIn(); };
-  if (zOut) zOut.onclick = function(){ map.zoomOut(); };
-
-  // ---------- Story (Google Sheet) ----------
-  var SHEET_ID = "17Hzg7R2fSHJGbOKAKMqG4QAqA1GlSJwFM-SQwPhQObY";
-  var SHEET_TAB = "April Blizzard Story"; // change here if you rename the tab
-  var storyItems = [];
-  var storyMarkers = [];
-  var storyIndex = 0;
-  var focusRing = null;
-
-  var storyPanel = document.getElementById("storyPanel");
-  var storyTitleEl = document.getElementById("storyTitle");
-  var storyBodyEl  = document.getElementById("storyBody");
-  var storyStepEl  = document.getElementById("storyStep");
-
-  function escapeHtml(s){
-    return String(s)
-      .replace(/&/g,"&amp;")
-      .replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;")
-      .replace(/'/g,"&#039;");
-  }
-  function safeText(v){ return (v==null) ? "" : String(v).trim(); }
-
-  function storyOpen(){
-    if (!storyPanel) return;
-    storyPanel.classList.add("story-open");
-    setTimeout(function(){ map.invalidateSize(); }, 220);
-  }
-  function storyClose(){
-    if (!storyPanel) return;
-    storyPanel.classList.remove("story-open");
-    setTimeout(function(){ map.invalidateSize(); }, 220);
-  }
-  function storyToggle(){
-    if (!storyPanel) return;
-    if (storyPanel.classList.contains("story-open")) storyClose();
-    else storyOpen();
-  }
-
-  function renderVideoBlock(v){
-    if (!v) return "";
-    var s = String(v).trim();
-    // If the sheet contains iframe HTML (ScreenPal, etc), use as-is (limited trust; you control the sheet)
-    if (s.toLowerCase().includes("<iframe")) return "<div class='story-media'>" + s + "</div>";
-    // Direct mp4 link
-    if (s.toLowerCase().endsWith(".mp4")){
-      return "<div class='story-media'><video controls playsinline preload='metadata'><source src='"+s+"' type='video/mp4'></video></div>";
-    }
-    // Otherwise treat as iframe src URL
-    return "<div class='story-media'><iframe src='" + s + "' allowfullscreen></iframe></div>";
-  }
-
-  function renderStory(i, panTo){
-    if (!storyItems.length) return;
-    if (i < 0) i = 0;
-    if (i >= storyItems.length) i = storyItems.length - 1;
-    storyIndex = i;
-
-    var item = storyItems[storyIndex];
-    if (storyTitleEl) storyTitleEl.textContent = item.title || "Storm Story";
-
-    var html = "";
-    if (item.text) {
-      var parts = String(item.text).split(/\n+/).filter(Boolean);
-      parts.forEach(function(p){ html += "<p>" + escapeHtml(p) + "</p>"; });
-    } else {
-      html += "<p class='story-mini'>No text for this station yet.</p>";
-    }
-
-    var img = safeText(item.image);
-    var vid = safeText(item.video);
-
-    if (img) html += "<div class='story-media'><img src='" + img + "' alt='Story image'></div>";
-    if (vid) html += renderVideoBlock(vid);
-
-    if (storyBodyEl) storyBodyEl.innerHTML = html;
-    if (storyStepEl) storyStepEl.textContent = "Station " + (storyIndex + 1) + " of " + storyItems.length;
-
-    // Highlight markers
-    storyMarkers.forEach(function(m, idx){
-      if (m && m.setStyle) {
-        m.setStyle({
-          radius: (idx===storyIndex? 12 : 9),
-          opacity: 1,
-          fillOpacity: (idx===storyIndex? 1 : 0.92),
-          weight: (idx===storyIndex? 3 : 2)
-        });
-        if (idx===storyIndex && m.bringToFront) m.bringToFront();
-      }
-    });
-
-    // Focus ring
-    if (typeof item.lat === "number" && typeof item.lon === "number") {
-      var ringRadiusM = 22000; // ~14 miles
-      if (!focusRing) {
-        focusRing = L.circle([item.lat, item.lon], {
-          radius: ringRadiusM,
-          color: "rgba(30,136,229,0.95)",
-          weight: 2,
-          opacity: 0.95,
-          fill: false,
-          dashArray: "6 6"
-        }).addTo(map);
-      } else {
-        focusRing.setLatLng([item.lat, item.lon]);
-        focusRing.setRadius(ringRadiusM);
-      }
-      if (focusRing.bringToFront) focusRing.bringToFront();
-    }
-
-    storyOpen();
-    if (panTo && item.lat != null && item.lon != null) map.panTo([item.lat, item.lon], { animate:true });
-  }
-
-  function buildStoryMarkers(){
-    storyMarkers.forEach(function(m){ try{ map.removeLayer(m); }catch(e){} });
-    storyMarkers = [];
-
-    storyItems.forEach(function(item, idx){
-      if (typeof item.lat !== "number" || typeof item.lon !== "number") return;
-
-      var m = L.circleMarker([item.lat, item.lon], {
-        radius: 9,
-        color: "rgba(255,255,255,0.95)",
-        weight: 2,
-        fillColor: "rgba(30,136,229,0.95)",
-        fillOpacity: 0.92
-      }).addTo(map);
-
-      m.on("click", function(){ renderStory(idx, false); });
-      if (item.title) m.bindTooltip(item.title, { direction:"top", offset:[0,-8], opacity:0.9 });
-
-      storyMarkers.push(m);
-    });
-
-    renderStory(0, false);
-  }
-
-  function loadStory(){
-    // (Optional) also show tab + load status
-    var url = "https://opensheet.elk.sh/" + SHEET_ID + "/" + encodeURIComponent(SHEET_TAB);
-    fetch(url).then(function(r){
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    }).then(function(rows){
-      storyItems = (rows || []).map(function(r){
-        var lat = parseFloat(r.lat);
-        var lon = parseFloat(r.lon);
-        return {
-          id: r.id,
-          title: safeText(r.title),
-          text: safeText(r.text),
-          lat: isFinite(lat) ? lat : null,
-          lon: isFinite(lon) ? lon : null,
-          image: safeText(r.image),
-          video: safeText(r.video),
-          order: parseFloat(r.order)
-        };
-      })
-      .filter(function(x){ return x.title || x.text || (x.lat!=null && x.lon!=null); })
-      .sort(function(a,b){
-        var ao = isFinite(a.order) ? a.order : 9999;
-        var bo = isFinite(b.order) ? b.order : 9999;
-        return ao - bo;
-      });
-
-      if (!storyItems.length){
-        if (storyBodyEl) storyBodyEl.innerHTML = "<p class='story-mini'>No rows found in Google Sheet tab: <b>" + escapeHtml(SHEET_TAB) + "</b></p>";
-        setStatus("Story: no rows found");
-        return;
-      }
-
-      buildStoryMarkers();
-      setStatus("Story: loaded " + storyItems.length + " stations");
-    }).catch(function(){
-      if (storyBodyEl) storyBodyEl.innerHTML = "<p class='story-mini'>Could not load story. Check sharing settings and tab name: <b>" + escapeHtml(SHEET_TAB) + "</b></p>";
-      setStatus("Story load failed");
-    });
-  }
-
-  var storyToggleBtn = document.getElementById("storyToggleBtn");
-  if (storyToggleBtn) storyToggleBtn.onclick = storyToggle;
-
-  var storyCloseBtn = document.getElementById("storyCloseBtn");
-  if (storyCloseBtn) storyCloseBtn.onclick = storyClose;
-
-  var prevBtn = document.getElementById("storyPrevBtn");
-  var nextBtn = document.getElementById("storyNextBtn");
-  if (prevBtn) prevBtn.onclick = function(){ renderStory(storyIndex - 1, true); };
-  if (nextBtn) nextBtn.onclick = function(){ renderStory(storyIndex + 1, true); };
-
-  // Load story now
-  loadStory();
-
-  // ---------- Initial ----------
-  setTimeLabel();
-  setProductLabel();
-  updateAll();   // radar on, alerts off until user checks the box
-})();
+document.getElementById("storyToggleBtn").onclick=()=>{
+ document.getElementById("storyPanel").classList.toggle("story-open");
+};
 </script>
 </body>
 </html>
