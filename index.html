@@ -469,6 +469,22 @@ body.student-mode .bstatus { display:none !important; }
   text-align:center !important;
 }
 
+
+/* --- Pin START button to upper-right (top line) --- */
+.banner-topline{position:relative !important;}
+.banner-topline #beginStoryBtn{
+  position:absolute !important;
+  right:16px !important;
+  top:10px !important;
+  transform:none !important;
+}
+
+/* --- Push logo slightly LOWER than the bottom edge (so it "sits lower") --- */
+#brandLogo{
+  bottom:-12px !important;
+  right:10px !important;
+}
+
 </style>
 </head>
 
@@ -502,13 +518,13 @@ body.student-mode .bstatus { display:none !important; }
       <span class="top-sep">—</span>
       <span class="top-question"><span class="top-q-label">Question:</span> How can we use real-time weather data to make safer decisions?</span>
     </div>
-    </div>
+    <button class="bbtn bbtn-story" id="beginStoryBtn" title="Begin the guided story">START</button>
+  </div>
   <div class="banner-divider" aria-hidden="true"></div>
 
   <div class="banner-bottomline">
     <div class="bottomline-center">
-      <button class="bbtn bbtn-story" id="beginStoryBtn" title="Begin the guided story">START</button>
-      <button class="bbtn" id="modeBtn" title="Toggle Student / Teacher mode">STUDENT</button>
+<button class="bbtn" id="modeBtn" title="Toggle Student / Teacher mode">STUDENT</button>
 
       <div class="opacity-wrap" title="Radar opacity">
         <span class="op-label">Opacity</span>
