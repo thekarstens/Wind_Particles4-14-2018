@@ -219,6 +219,16 @@ body.student-mode .bstatus { display:none !important; }
 .opacity-wrap{margin-top:0}
 .story-time-stack{margin-top:0}
 
+
+/* --- Right-side controls pinned upper-right --- */
+.right-controls{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-left:auto;
+  margin-top:0;
+}
+
 </style>
 </head>
 
@@ -264,7 +274,7 @@ body.student-mode .bstatus { display:none !important; }
     </div>
 
     <!-- 5) Legend for current product -->
-    <div class="legend-mini" id="legendRadar" title="Radar reflectivity">
+    <div class="right-controls"><div class="legend-mini" id="legendRadar" title="Radar reflectivity">
       <span class="leg-mini-label">Light</span>
       <span class="leg-mini-bar" aria-hidden="true"></span>
       <span class="leg-mini-label">Heavy</span>
@@ -282,6 +292,7 @@ body.student-mode .bstatus { display:none !important; }
 
     <!-- 8) Student/Teacher toggle -->
     <button class="bbtn" id="modeBtn" title="Toggle Student / Teacher mode">STUDENT</button>
+  </div>
   </div>
 
   <div id="status" class="bstatus" style="display:none;"></div>
