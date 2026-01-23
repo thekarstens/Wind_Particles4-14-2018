@@ -45,7 +45,18 @@
   .tiny { font:700 11px/1.2 Arial, sans-serif; opacity:.78; }
 
   /* Branding logo (bottom-right, small) */
-  #brandLogo{ position:fixed; right:18px; bottom:60px; width:170px; z-index:900; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35)); }
+  #brandLogo{
+    position:absolute;
+    bottom:10px;
+    right:10px;
+    z-index:100000;
+    width:140px;
+    max-width:24vw;
+    height:auto;
+    opacity:0.95;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+    pointer-events:none;
+  }
 
   /* Leaflet layer control nudge down below banner */
   .leaflet-top.leaflet-right { top: 70px; }
@@ -70,7 +81,11 @@
 .bbtn:hover{background:rgba(0,0,0,0.4);}
 .btime{min-width:190px;text-align:center;font-weight:800;letter-spacing:.2px;}
 .bsep{width:1px;height:26px;background:rgba(255,255,255,0.25);margin:0 4px;}
+
+  .bzoom{font-weight:800;letter-spacing:.06em;color:#fff;opacity:.92;margin-right:8px}
 .banner-legend{margin-left:auto;display:flex;flex-direction:column;gap:4px;min-width:250px;}
+  .bstatus{color:#fff;opacity:.85;font-weight:600;margin-left:14px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+
 .leg-title{font-size:12px;opacity:.9;font-weight:800;text-transform:uppercase;letter-spacing:.6px;}
 .leg-bar{display:flex;gap:4px;}
 .sw{flex:1;height:10px;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.15);}
@@ -80,7 +95,15 @@
 .sw4{background:#ffd166;}
 .sw5{background:#ef476f;}
 .leg-labels{display:flex;justify-content:space-between;font-size:11px;opacity:.9;}
-#brandLogo{ position:fixed; right:18px; bottom:60px; width:170px; z-index:900; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35)); }
+#brandLogo{
+  position:absolute;right:18px;bottom:18px;width:210px;z-index:900;pointer-events:none;
+  filter: drop-shadow(0 3px 10px rgba(0,0,0,.35));
+}
+
+
+  /* --- layout tweaks --- */
+  .leaflet-top.leaflet-right { margin-top: 90px; }   /* push layer toggles below banner */
+  #brandLogo { bottom: 26px; right: 26px; }          /* nudge logo down a bit */
 
 </style>
 </head>
@@ -93,14 +116,15 @@
 
     <div class="banner-controls" aria-label="Time controls">
       <button class="bbtn" id="bBackBtn" title="Back 3 hours">◀</button>
-      <div class="btime" id="bannerTimeLabel">Apr 14, 2018 7AM</div>
+      <div class="btime" id="bannerTimeLabel">2018-04-14 7 AM CST</div>
       <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
       <div class="bsep"></div>
+      <div class="bzoom">ZOOM: <span id="zoomLabel">6</span></div>
       <button class="bbtn" id="zoomOutBtn" title="Zoom out">−</button>
       <button class="bbtn" id="zoomInBtn" title="Zoom in">+</button>
-      <div class="bzoom" id="bannerZoomLabel">Zoom: 6</div>
     </div>
 
+    <div id="status" class="bstatus">Loading…</div>
     <div class="banner-legend" aria-label="Radar legend">
       <div class="leg-title">Reflectivity</div>
       <div class="leg-bar">
@@ -116,27 +140,7 @@
     </div>
   </div>
 </div>
-
-<div class="row">
-    <button class="btn" id="backBtn">◀ Time</button>
-    <div class="mono" id="timeLabel">2018-04-14 12Z</div>
-    <button class="btn" id="fwdBtn">Time ▶</button>
-  </div>
-
-  <div class="row">
-    <span class="tiny">Step:</span><span class="mono">3 hours</span>
-    <span style="opacity:.75;margin-left:auto">Zoom:</span><span class="mono" id="zoomLabel">6</span>
-  </div>
-
-  <div class="row">
-    <span class="tiny" id="status">Loading…</span>
-  </div>
-
-  <div class="tiny">
-    Times shown in <b>Central</b> (labelled CST for class use).
-  </div>
-</div>
-
+<img id="brandLogo" src="./logo.png" alt="Weather Workshops" />
 <script>
 (function(){
   // ---------- Config ----------
@@ -150,8 +154,8 @@
 
   // Composite radar geographic extent (NAD83 geographic). Shifted ~60mi south + ~15mi east for better fit.
   // Base extent commonly used by IEM mosaics: lon -126..-66, lat 24..50
-  var SHIFT_LAT = -0.87;   // south
-  var SHIFT_LON =  0.22;   // east
+  var SHIFT_LAT = -1.09; // south shift (~15mi extra)   // south
+  var SHIFT_LON = 0.49; // east shift (~15mi extra)   // east
   var RADAR_BOUNDS = L.latLngBounds(
     L.latLng(24 + SHIFT_LAT, -126 + SHIFT_LON),
     L.latLng(50 + SHIFT_LAT,  -66 + SHIFT_LON)
@@ -178,25 +182,223 @@
 
   // "Central time" label (forced) — we just subtract 5 hours and show CST
   // (Technically CDT for April, but your students don't need DST complexity here.)
-  function formatCentralLabel(d){
+  function formatCentralLabel(d) {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const m = months[d.getUTCMonth()];
-  const day = d.getUTCDate();
-  const yr = d.getUTCFullYear();
-  let hr = d.getUTCHours();
-  const ampm = (hr >= 12) ? "PM" : "AM";
+  const m = months[d.getMonth()];
+  const day = d.getDate();
+  const year = d.getFullYear();
+  let hr = d.getHours();
+  const ampm = hr >= 12 ? "PM" : "AM";
   hr = hr % 12; if (hr === 0) hr = 12;
-  return `${m} ${day}, ${yr} ${hr}${ampm}`;
+  // e.g. "Apr 14, 2018 7AM"
+  return `${m} ${day}, ${year} ${hr}${ampm}`;
 }
-)();
+
+  // ---------- Map ----------
+  var map = L.map("map", { zoomControl:true }).setView([43.55, -96.73], 6);
+  document.getElementById("zoomLabel").textContent = map.getZoom();
+
+  // Clean base map (no labels)
+  var base = L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+    { attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains:"abcd", maxZoom: 19 }
+  ).addTo(map);
+
+  // Optional labels (kept on top to help students)
+  var labels = L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+    { attribution: "", subdomains:"abcd", maxZoom: 19, pane: "overlayPane" }
+  ).addTo(map);
+
+  // Town labels
+  function addTown(name, lat, lon){
+    L.marker([lat, lon], {
+      icon: L.divIcon({ className:"town-label", html: name, iconSize: null }),
+      interactive:false
+    }).addTo(map);
+  }
+  addTown("Sioux Falls", 43.55, -96.73);
+  addTown("Omaha", 41.2565, -95.9345);
+  addTown("Des Moines", 41.5868, -93.6250);
+  addTown("Minneapolis", 44.9778, -93.2650);
+  addTown("Kansas City", 39.0997, -94.5786);
+  addTown("St. Louis", 38.6270, -90.1994);
+
+  map.on("zoomend", function(){
+    document.getElementById("zoomLabel").textContent = map.getZoom();
+  });
+
+  // ---------- Layers ----------
+  var obsRadarOverlay = null;
+  var obsRadarEnabled = true;
+
+  var alertsLayer = L.geoJSON(null, {
+    filter: function(f){
+      const p = (f && f.properties) ? f.properties : {};
+      const ev = String(p.event || p.EVENT || p.headline || "").toLowerCase();
+      // Keep only WARNINGS (no statements/advisories/watches), so polygons don't show as black clutter.
+      if (!ev) return false;
+      if (ev.includes("statement") || ev.includes("advisory") || ev.includes("watch")) return false;
+      return ev.includes("warning");
+    },
+
+    style: function(f){
+      const p = (f && f.properties) ? f.properties : {};
+      const ev = String(p.event || p.EVENT || p.headline || p.phenomena || "").toLowerCase();
+      const phe = String(p.phenomena || p.PHENOM || "").toLowerCase();
+      const sig = String(p.significance || p.SIG || "").toLowerCase();
+      const key = ev || (phe && sig ? (phe + "." + sig) : phe || "");
+
+      // NWS-ish colors (simple + TV-friendly)
+      let stroke = "#333";
+      let fill = "#333";
+
+      const has = (s)=> key.indexOf(s) !== -1;
+
+      if (has("tornado") || phe==="to") { stroke = fill = "#e53935"; }
+      else if (has("severe thunderstorm") || phe==="sv") { stroke = fill = "#fdd835"; }
+      else if (has("flash flood") || phe==="ff") { stroke = fill = "#00c853"; }
+      else if (has("flood") || phe==="fl") { stroke = fill = "#00a152"; }
+      else if (has("blizzard") || phe==="bz") { stroke = fill = "#d81b60"; }
+      else if (has("winter storm") || phe==="ws") { stroke = fill = "#ff5aa5"; }
+      else if (has("ice storm") || phe==="is") { stroke = fill = "#ff80ab"; }
+      else if (has("winter weather") || phe==="ww") { stroke = fill = "#ad1457"; }
+      else if (has("high wind") || phe==="hw") { stroke = fill = "#ff6f00"; }
+      else if (has("wind advisory") || phe==="wi") { stroke = fill = "#ffd180"; }
+      else if (has("dense fog") || phe==="fg") { stroke = fill = "#90a4ae"; }
+      else if (has("red flag") || phe==="fw") { stroke = fill = "#c62828"; }
+
+      return { color: stroke, weight: 2, opacity: 0.9, fillColor: fill, fillOpacity: 0.25 };
+    },
+    onEachFeature: function(f, layer){
+      var props = f.properties || {};
+      var title = props.event || props.headline || props.phenomena || "Alert";
+      layer.bindPopup("<b>"+title+"</b>");
+    }
+  });
+  var alertsEnabled = false;
+
+  // Layer control (NO extra base layer picker)
+  
+  // State boundaries / reference layer (like leaflet-test-map12)
+  const stateLines = L.tileLayer(
+    'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places_Alternate/MapServer/tile/{z}/{y}/{x}',
+    { opacity: 0.65, zIndex: 450 }
+  );
+  stateLines.addTo(map);
+
+var overlays = {
+    'State Lines': stateLines,
+};
+  overlays["Composite Radar (Observed)"] = L.layerGroup(); // placeholder group
+  overlays["Alerts (WWA)"] = alertsLayer;
+
+  // We'll manage radar ourselves but still expose a checkbox
+  var lc = L.control.layers(null, overlays, { collapsed:false }).addTo(map);
+
+  // Remove any base-layer radio section if Leaflet created it empty
+  setTimeout(function(){
+    var el = document.querySelector(".leaflet-control-layers-base");
+    if (el) el.style.display = "none";
+  }, 50);
+
+  // Toggle handler for layer control checkboxes
+  map.on("overlayadd", function(e){
+    if (e.name === "Alerts (WWA)") { alertsEnabled = true; updateAll(); }
+    if (e.name === "Composite Radar (Observed)") { obsRadarEnabled = true; updateRadar(); }
+  });
+  map.on("overlayremove", function(e){
+    if (e.name === "Alerts (WWA)") { alertsEnabled = false; alertsLayer.clearLayers(); }
+    if (e.name === "Composite Radar (Observed)") { obsRadarEnabled = false; if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); } }
+  });
+
+  // Ensure radar checkbox starts ON
+  // Leaflet doesn't automatically check our placeholder group, so we force it:
+  (function forceRadarChecked(){
+    var inputs = document.querySelectorAll(".leaflet-control-layers-overlays input");
+    for (var i=0;i<inputs.length;i++){
+      var label = inputs[i].parentElement && inputs[i].parentElement.textContent || "";
+      if (label.indexOf("Composite Radar") !== -1){
+        inputs[i].checked = true;
+      }
+    }
+  })();
+
+  // ---------- Updaters ----------
+  function setStatus(s){ document.getElementById("status").textContent = s; }
+  function setTimeLabel(){
+    document.getElementById("bannerTimeLabel").textContent = formatCentralLabel(curZ);
+  }
+
+  function updateRadar(){
+    if (!obsRadarEnabled) return;
+    var url = radarUrlFor(curZ);
+
+    // Test-load the image before swapping overlay (avoids blank overlay on 404)
+    var img = new Image();
+    img.onload = function(){
+      if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); }
+      obsRadarOverlay = L.imageOverlay(url, RADAR_BOUNDS, { opacity: 0.70, interactive:false });
+      obsRadarOverlay.addTo(map);
+      setStatus("Radar: " + url);
+    };
+    img.onerror = function(){
+      setStatus("Radar missing: " + url + " (check /radar_frames/)");
+    };
+    img.src = url;
+  }
+
+  function updateAlerts(){
+    if (!alertsEnabled) return;
+    var url = alertsUrlFor(curZ);
+    fetch(url).then(function(r){
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function(gj){
+      alertsLayer.clearLayers();
+      alertsLayer.addData(gj);
+      if (!map.hasLayer(alertsLayer)) alertsLayer.addTo(map);
+      setStatus("Alerts: " + url);
+    }).catch(function(err){
+      alertsLayer.clearLayers();
+      setStatus("Alerts missing: " + url);
+    });
+  }
+
+  function updateAll(){
+    setTimeLabel();
+    updateRadar();
+    updateAlerts();
+  }
+
+  // ---------- Time controls ----------
+  function clampTime(){
+    if (curZ < startZ) curZ = new Date(startZ.getTime());
+    if (curZ > endZ) curZ = new Date(endZ.getTime());
+  }
+
+  document.getElementById('bBackBtn').onclick = function(){
+    curZ = new Date(curZ.getTime() - STEP_HOURS*3600*1000);
+    clampTime(); updateAll();
+  };
+  document.getElementById('bFwdBtn').onclick = function(){
+    curZ = new Date(curZ.getTime() + STEP_HOURS*3600*1000);
+    clampTime(); updateAll();
+  };
+
+  const zIn = document.getElementById("zoomInBtn");
+  const zOut = document.getElementById("zoomOutBtn");
+  if (zIn) zIn.onclick = () => map.zoomIn();
+  if (zOut) zOut.onclick = () => map.zoomOut();
+
+
+  // Initial
+  setTimeLabel();
+  // Add overlays based on default checkboxes
+  // Alerts starts OFF; radar starts ON.
+  updateAll();
+
+})();
 </script>
-<img id="brandLogo" src="logo.png" alt="Logo">
 </body>
 </html>
-
-// State lines overlay (ArcGIS reference)
-const stateLines = L.tileLayer(
-  'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places_Alternate/MapServer/tile/{z}/{y}/{x}',
-  {opacity: 0.65}
-);
-stateLines.addTo(map);
