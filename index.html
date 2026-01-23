@@ -245,11 +245,112 @@ body.student-mode .bstatus { display:none !important; }
 /* Logo lower */
 #brandLogo{bottom:0px !important;}
 
+/* --- Two-line banner layout --- */
+.tvbanner{
+  position:absolute; top:0; left:0; right:0;
+  z-index:99999;
+  background:rgba(11,28,45,0.90);
+  color:#fff;
+  border-bottom:2px solid rgba(255,255,255,0.12);
+}
+.banner-topline{
+  display:flex;
+  justify-content:center;
+  padding:10px 14px 6px 14px;
+  font-family: Arial, sans-serif;
+  text-transform:uppercase;
+  letter-spacing:.7px;
+}
+.topline-center{
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+  max-width:1200px;
+  width:100%;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.top-lesson{font-weight:900;font-size:26px;white-space:nowrap}
+.top-sep{opacity:.65;font-weight:900}
+.top-question{font-weight:800;font-size:16px;letter-spacing:.2px;text-transform:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.top-q-label{font-weight:900;text-transform:uppercase;letter-spacing:.6px}
+
+.banner-bottomline{
+  display:flex;
+  justify-content:center;
+  padding:6px 14px 10px 14px;
+  font-family: Arial, sans-serif;
+}
+.bottomline-center{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  max-width:1200px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+/* Big product word, flexible */
+.banner-product{min-width:200px;display:flex;justify-content:center}
+.product-center{
+  font:900 44px/1 Arial,sans-serif;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.time-controls{display:flex;align-items:center;gap:10px}
+.btime{font:900 16px/1 Arial,sans-serif;letter-spacing:.7px;text-transform:uppercase;white-space:nowrap}
+
+/* Begin button */
+.bbtn-story{
+  background:#fdd835 !important;
+  color:#111 !important;
+  border-color: rgba(0,0,0,0.35) !important;
+  font:900 14px/1 Arial,sans-serif !important;
+  padding:12px 16px !important;
+  border-radius:14px !important;
+  letter-spacing:.8px !important;
+}
+
+/* Opacity group */
+.opacity-wrap{display:flex;align-items:center;gap:8px}
+.op-label{font:900 12px/1 Arial,sans-serif;letter-spacing:.7px;text-transform:uppercase}
+#radarOpacity{width:180px}
+
+/* Map legend near logo */
+.map-legend{
+  position:absolute;
+  right:26px;
+  bottom:92px;
+  z-index:900;
+  background:rgba(11,28,45,0.80);
+  border:1px solid rgba(255,255,255,0.18);
+  border-radius:12px;
+  padding:8px 10px;
+  color:#fff;
+  font-family: Arial, sans-serif;
+}
+.map-legend-row{display:flex;align-items:center;gap:10px}
+.leg-mini-label{font:900 12px/1 Arial,sans-serif;letter-spacing:.7px;text-transform:uppercase;opacity:.95}
+.leg-mini-bar{
+  width:140px;height:10px;border-radius:7px;
+  background:linear-gradient(90deg,#2b83ba,#ffd166,#ef476f);
+}
+
+/* Keep logo low */
+#brandLogo{bottom:0px !important; right:26px !important;}
 </style>
 </head>
 
 <body>
 <div id="map"></div>
+<div id="mapLegend" class="map-legend" title="Radar reflectivity">
+  <div class="map-legend-row">
+    <span class="leg-mini-label">Light</span>
+    <span class="leg-mini-bar" aria-hidden="true"></span>
+    <span class="leg-mini-label">Heavy</span>
+  </div>
+</div>
 <div id="storyPanel" aria-label="Story panel">
   <div class="story-head">
     <div class="story-title" id="storyTitle">Story</div>
@@ -265,50 +366,37 @@ body.student-mode .bstatus { display:none !important; }
   <div class="tiny" id="storyStep"></div>
 </div>
 <div id="banner" class="tvbanner">
-  <div class="banner-inner">
-    <!-- 1) Lesson + Driving question -->
-    <div class="banner-left">
-      <div class="lesson-left">Lesson 1: Driving Question</div>
-      <div class="dq-sub"><span class="dq-label">Question:</span> <span class="dq-text" id="drivingQuestion">How can we use real-time weather data to make safer decisions?</span></div>
+  <div class="banner-topline" role="banner">
+    <div class="topline-center">
+      <span class="top-lesson">Lesson 1: Driving Question</span>
+      <span class="top-sep">—</span>
+      <span class="top-question"><span class="top-q-label">Question:</span> How can we use real-time weather data to make safer decisions?</span>
     </div>
+  </div>
 
-    <!-- 2) Begin story + time controls (stacked) -->
-    <div class="story-time-stack">
-      <button class="bbtn bbtn-story" id="beginStoryBtn" title="Begin the guided story">BEGIN STORY</button>
-      <div class="banner-mid banner-mid-stack" aria-label="Time controls">
+  <div class="banner-bottomline">
+    <div class="bottomline-center">
+      <button class="bbtn bbtn-story" id="beginStoryBtn" title="Begin the guided story">BEGIN HERE</button>
+      <button class="bbtn" id="modeBtn" title="Toggle Student / Teacher mode">STUDENT</button>
+
+      <div class="opacity-wrap" title="Radar opacity">
+        <span class="op-label">Opacity</span>
+        <input id="radarOpacity" type="range" min="20" max="100" value="70" />
+      </div>
+
+      <div class="banner-product" aria-label="Product shown">
+        <div class="product-center" id="productLabel">RADAR</div>
+      </div>
+
+      <div class="time-controls" aria-label="Time controls">
         <button class="bbtn" id="bBackBtn" title="Back 3 hours">◀</button>
         <div class="btime" id="bannerTimeLabel">April 14, 2018 7AM</div>
         <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
       </div>
-    </div>
-      <button class="bbtn" id="bFwdBtn" title="Forward 3 hours">▶</button>
-    </div>
 
-    <!-- 4) Product name big + central -->
-    <div class="banner-product" aria-label="Product shown">
-      <div class="product-center" id="productLabel">RADAR</div>
+      <button class="bbtn" id="zoomOutBtn" title="Zoom out">−</button>
+      <button class="bbtn" id="zoomInBtn" title="Zoom in">+</button>
     </div>
-
-    <!-- 5) Legend for current product -->
-    <div class="right-controls"><div class="legend-mini" id="legendRadar" title="Radar reflectivity">
-      <span class="leg-mini-label">Light</span>
-      <span class="leg-mini-bar" aria-hidden="true"></span>
-      <span class="leg-mini-label">Heavy</span>
-    </div>
-
-    <!-- 6) Opacity slider (labeled) -->
-    <div class="opacity-wrap" title="Radar opacity">
-      <span class="op-label">Opacity</span>
-      <input id="radarOpacity" type="range" min="20" max="100" value="70" />
-    </div>
-
-    <!-- 7) Zoom buttons -->
-    <button class="bbtn" id="zoomOutBtn" title="Zoom out">−</button>
-    <button class="bbtn" id="zoomInBtn" title="Zoom in">+</button>
-
-    <!-- 8) Student/Teacher toggle -->
-    <button class="bbtn" id="modeBtn" title="Toggle Student / Teacher mode">STUDENT</button>
-  </div>
   </div>
 
   <div id="status" class="bstatus" style="display:none;"></div>
