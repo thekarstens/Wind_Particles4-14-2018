@@ -492,6 +492,45 @@ body.student-mode .bstatus { display:none !important; }
 .banner-topline{padding-top:8px !important; padding-bottom:5px !important;}
 .banner-bottomline{padding-top:3px !important; padding-bottom:7px !important;}
 
+
+/* --- Slight banner shrink (top text + controls) --- */
+.top-lesson{font-size:22px !important;}
+.top-question{font-size:14px !important;}
+.product-center{font-size:38px !important;}
+.bbtn{padding:7px 10px !important; font-size:12px !important;}
+.bbtn-story{padding:10px 14px !important; font-size:13px !important;}
+#radarOpacity{width:160px !important;}
+.banner-topline{padding-top:7px !important; padding-bottom:4px !important;}
+.banner-bottomline{padding-top:2px !important; padding-bottom:6px !important;}
+
+
+/* --- Brand logo: smaller + lower --- */
+#brandLogo{
+  width:150px !important;
+  height:auto !important;
+  bottom:-24px !important;
+  right:10px !important;
+  opacity:0.95 !important;
+}
+
+
+/* TV-style city labels */
+.leaflet-tooltip.tv-city-label{
+  background:rgba(255,255,255,0.94);
+  color:#111;
+  border:0;
+  border-radius:10px;
+  padding:4px 8px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.25);
+  font:800 12px/1 Arial,sans-serif;
+}
+.leaflet-tooltip-top.tv-city-label:before,
+.leaflet-tooltip-right.tv-city-label:before,
+.leaflet-tooltip-left.tv-city-label:before,
+.leaflet-tooltip-bottom.tv-city-label:before{
+  border:0;
+}
+
 </style>
 </head>
 
@@ -616,6 +655,73 @@ body.student-mode .bstatus { display:none !important; }
   // Thicker state boundaries (no labels)
   (function(){
     map.createPane("stateOutlinePane");
+
+// --- Zoom-based "TV style" city labels (keep it clean) ---
+const cityLabelLayer = L.layerGroup().addTo(map);
+const cityLabelTiers = {
+  big: [
+    {name:"Sioux Falls", lat:43.55, lon:-96.73},
+    {name:"Minneapolis", lat:44.9778, lon:-93.2650},
+    {name:"Omaha", lat:41.2565, lon:-95.9345},
+    {name:"Des Moines", lat:41.5868, lon:-93.6250}
+  ],
+  medium: [
+    {name:"Rapid City", lat:44.0805, lon:-103.2310},
+    {name:"Denver", lat:39.7392, lon:-104.9903},
+    {name:"Madison", lat:43.0731, lon:-89.4012},
+    {name:"Kansas City", lat:39.0997, lon:-94.5786}
+  ],
+  small: [
+    {name:"Brookings", lat:44.3114, lon:-96.7984},
+    {name:"Yankton", lat:42.8711, lon:-97.3973},
+    {name:"Aberdeen", lat:45.4647, lon:-98.4865},
+    {name:"Norfolk", lat:42.0283, lon:-97.4170},
+    {name:"Sioux City", lat:42.4990, lon:-96.4003},
+    {name:"Mason City", lat:43.1536, lon:-93.2010},
+    {name:"Rochester", lat:44.0121, lon:-92.4802}
+  ]
+};
+
+function makeTvCityLabel(c){
+  return L.circleMarker([c.lat, c.lon], {
+    radius:8,
+    color:"#ffffff",
+    weight:2,
+    fillColor:"#2fa4ff",
+    fillOpacity:1
+  }).bindTooltip(c.name, {
+    permanent:true,
+    direction:"right",
+    offset:[10,0],
+    className:"tv-city-label"
+  });
+}
+
+const cityMarkers = { big: [], medium: [], small: [] };
+Object.keys(cityLabelTiers).forEach(tier => {
+  cityLabelTiers[tier].forEach(c => cityMarkers[tier].push(makeTvCityLabel(c)));
+});
+
+function refreshCityLabels(){
+  const z = map.getZoom();
+  cityLabelLayer.clearLayers();
+
+  // Wide view: only BIG cities
+  cityMarkers.big.forEach(m => cityLabelLayer.addLayer(m));
+
+  // Add MEDIUM cities when zoomed in a bit
+  if (z >= 6){
+    cityMarkers.medium.forEach(m => cityLabelLayer.addLayer(m));
+  }
+  // Add SMALL towns when zoomed further
+  if (z >= 7){
+    cityMarkers.small.forEach(m => cityLabelLayer.addLayer(m));
+  }
+}
+map.on("zoomend", refreshCityLabels);
+refreshCityLabels();
+
+
     map.getPane("stateOutlinePane").style.zIndex = 460;
 
     const outlineUrl = "https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/us-states.json";
@@ -648,10 +754,7 @@ body.student-mode .bstatus { display:none !important; }
       interactive:false
     }).addTo(map);
   }
-  addTown("Sioux Falls", 43.55, -96.73);
-  addTown("Rapid City", 44.0805, -103.2310);
-  addTown("Denver", 39.7392, -104.9903);
-  addTown("Omaha", 41.2565, -95.9345);
+addTown("Omaha", 41.2565, -95.9345);
   addTown("Des Moines", 41.5868, -93.6250);
   addTown("Minneapolis", 44.9778, -93.2650);
   addTown("Kansas City", 39.0997, -94.5786);
