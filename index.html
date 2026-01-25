@@ -169,7 +169,7 @@ body.student-mode .bstatus { display:none !important; }
 .bstatus{margin-top:6px; font:800 12px/1 Arial, sans-serif; opacity:.9; max-width:95vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
 /* Make story button obvious */
-#beginStoryBtn{border-color: rgba(255,255,255,0.45);}
+#beginStoryBtn{border-color: rgba(255,255,255,0.45); flex:0 0 auto; margin-left:auto;}
 /* --- Driving question line (option 2 style) --- */
 .dq-sub{margin-top:4px;font:800 14px/1 Arial,sans-serif;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dq-label{font-weight:900;opacity:.95}
@@ -257,7 +257,9 @@ body.student-mode .bstatus { display:none !important; }
 }
 .banner-topline{
   display:flex;
-  justify-content:center;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
   padding:10px 14px 6px 14px;
   font-family: Arial, sans-serif;
   text-transform:uppercase;
@@ -265,11 +267,13 @@ body.student-mode .bstatus { display:none !important; }
 }
 .topline-center{
   display:flex;
+  flex:1 1 auto;
+  min-width:0;
   align-items:baseline;
   gap:10px;
   max-width:1200px;
   width:100%;
-  justify-content:center;
+  justify-content:flex-start;
   flex-wrap:wrap;
 }
 .top-lesson{font-weight:900;font-size:26px;white-space:nowrap}
@@ -531,6 +535,8 @@ body.student-mode .bstatus { display:none !important; }
   border:0;
 }
 
+
+.banner-product #productLabel{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;}
 </style>
 </head>
 
@@ -602,16 +608,18 @@ body.student-mode .bstatus { display:none !important; }
   var STEP_HOURS = 3;
 
   // Use the same starting time as your case study controls:
-  // 2018-04-14 12Z (7am Central daylight). We'll label it "CST" per your preference.
-  var startZ = new Date(Date.UTC(2018, 3, 14, 12, 0, 0)); // months are 0-based; 3 = April
-  var endZ   = new Date(Date.UTC(2018, 3, 15, 12, 0, 0)); // 24h window; extend later if you want
+  // Time window for the time controls (expanded to include earlier GFS forecast frames).
+  var startZ = new Date(Date.UTC(2018, 3, 11, 0, 0, 0));  // 2018-04-11 00Z (earliest GFS frames we may use)
+  var endZ   = new Date(Date.UTC(2018, 3, 15, 12, 0, 0)); // 2018-04-15 12Z (storm end window; extend later if needed) // 24h window; extend later if you want
   var curZ = new Date(startZ.getTime());
 
   // Composite radar geographic extent (NAD83 geographic). Shifted ~60mi south + ~15mi east for better fit.
   // Base extent commonly used by IEM mosaics: lon -126..-66, lat 24..50
   var SHIFT_LAT = -1.09; // south shift (~15mi extra)   // south
   var SHIFT_LON = 0.49; // east shift (~15mi extra)   // east
-  var RADAR_BOUNDS = L.latLngBounds(
+  var GFS_BOUNDS = [[24, -125], [50, -66]]; // tweak if your PNG was generated with a different CONUS extent // must match how the PNGs were generated
+
+var RADAR_BOUNDS = L.latLngBounds(
     L.latLng(24 + SHIFT_LAT, -126 + SHIFT_LON),
     L.latLng(50 + SHIFT_LAT,  -66 + SHIFT_LON)
   );
@@ -650,7 +658,11 @@ body.student-mode .bstatus { display:none !important; }
 }
 
   // ---------- Map ----------
-  var map = L.map("map", { zoomControl:true }).setView([43.55, -96.73], 6);
+  var map = L.map("map", { zoomControl:true, minZoom:4, maxZoom:12 }).setView([43.55, -96.73], 6);
+
+  // Prevent zooming out to a world view
+  map.setMaxBounds([[20, -130], [55, -60]]);
+  map.options.maxBoundsViscosity = 1.0;
   var zl = document.getElementById("zoomLabel"); if (zl) zl.textContent = map.getZoom();
   // Thicker state boundaries (no labels)
   (function(){
@@ -730,7 +742,7 @@ refreshCityLabels();
         pane: "stateOutlinePane",
         interactive: false,
         style: { color: "#555", weight: 2.5, opacity: 0.7, fillOpacity: 0 }
-      }).addTo(map);
+      }).addTo(townLayer);
     }).catch(()=>{/* ignore if offline */});
   })();
 
@@ -745,14 +757,15 @@ refreshCityLabels();
   var labels = L.tileLayer(
     "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
     { attribution: "", subdomains:"abcd", maxZoom: 19, pane: "overlayPane" }
-  ).addTo(map);
+  );
 
   // Town labels
+  var townLayer = L.layerGroup().addTo(map);
   function addTown(name, lat, lon){
     L.marker([lat, lon], {
       icon: L.divIcon({ className:"town-label", html: name, iconSize: null }),
       interactive:false
-    }).addTo(map);
+    }).addTo(townLayer);
   }
 addTown("Omaha", 41.2565, -95.9345);
   addTown("Des Moines", 41.5868, -93.6250);
@@ -850,7 +863,7 @@ addTown("Omaha", 41.2565, -95.9345);
           opacity: 0.95,
           fill: false,
           dashArray: "6 6"
-        }).addTo(map);
+        }).addTo(townLayer);
       } else {
         focusRing.setLatLng([item.lat, item.lon]);
         focusRing.setRadius(ringRadiusM);
@@ -888,7 +901,7 @@ addTown("Omaha", 41.2565, -95.9345);
         weight: 2,
         fillColor: "rgba(30,136,229,0.95)",
         fillOpacity: 0.9
-      }).addTo(map);
+      }).addTo(townLayer);
 
       m.on("click", function(){
         renderStory(idx, false);
@@ -979,7 +992,9 @@ function applyRadarOpacity(){
   if (!radarOpacity) return;
   var v = parseInt(radarOpacity.value || "70", 10);
   var op = Math.max(0.2, Math.min(1, v/100));
+  window.currentOpacity = op;
   if (obsRadarOverlay && obsRadarEnabled) obsRadarOverlay.setOpacity(op);
+  if (gfsSnowOverlay && map.hasLayer(gfsSnowOverlay)) gfsSnowOverlay.setOpacity(op);
 }
 if (radarOpacity){
   radarOpacity.oninput = applyRadarOpacity;
@@ -1070,7 +1085,15 @@ if (radarOpacity){
   // State boundary outline handled via GeoJSON (no labels)
 var overlays = {};
   overlays["Composite Radar (Observed)"] = L.layerGroup(); // placeholder group
-// We'll manage radar ourselves but still expose a checkbox
+  // We'll manage radar ourselves but still expose a checkbox
+
+  // Optional: CARTO label tiles (off by default to avoid duplicate city names)
+  overlays["Labels"] = labels;
+
+  // GFS Snow Forecast (static image overlay that swaps 96/72/48 based on timeline)
+  overlays["GFS Snow Forecast"] = L.layerGroup(); // placeholder, managed in overlay handlers
+
+
   var lc = L.control.layers(null, overlays, { collapsed:false }).addTo(map);
 
   // Remove any base-layer radio section if Leaflet created it empty
@@ -1082,11 +1105,48 @@ var overlays = {};
   // Toggle handler for layer control checkboxes
   map.on("overlayadd", function(e){
 
-    if (e.name === "Composite Radar (Observed)") { obsRadarEnabled = true; updateRadar(); updateProductLabel(); }
+    if (e.name === "Composite Radar (Observed)") {
+      obsRadarEnabled = true;
+      updateRadar();
+      updateProductLabel();
+    }
+
+    if (e.name === "Labels") {
+      // avoid duplicate city names: if labels are on, hide our custom town labels
+      if (townLayer) map.removeLayer(townLayer);
+      labels.addTo(map);
+    }
+
+    if (e.name === "GFS Snow Forecast") {
+      gfsSnowEnabled = true;
+      ensureGfsSnowOverlay();
+      if (gfsSnowOverlay) gfsSnowOverlay.addTo(map);
+
+      // When showing national snow, keep the view sane (no world zoom)
+      map.fitBounds(GFS_BOUNDS, { padding:[10,10] });
+      updateProductLabel();
+    }
   });
+
   map.on("overlayremove", function(e){
 
-    if (e.name === "Composite Radar (Observed)") { obsRadarEnabled = false; if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); } updateProductLabel(); }
+    if (e.name === "Composite Radar (Observed)") {
+      obsRadarEnabled = false;
+      if (obsRadarOverlay){ map.removeLayer(obsRadarOverlay); }
+      updateProductLabel();
+    }
+
+    if (e.name === "Labels") {
+      map.removeLayer(labels);
+      // restore custom town labels
+      if (townLayer) townLayer.addTo(map);
+    }
+
+    if (e.name === "GFS Snow Forecast") {
+      gfsSnowEnabled = false;
+      if (gfsSnowOverlay) map.removeLayer(gfsSnowOverlay);
+      updateProductLabel();
+    }
   });
 
   // Ensure radar checkbox starts ON
@@ -1110,7 +1170,21 @@ var overlays = {};
   function updateProductLabel(){
   var pl = document.getElementById("productLabel");
   if (!pl) return;
-  pl.textContent = obsRadarEnabled ? "RADAR" : "MAP";
+
+  // IMPORTANT: never concatenate labels (it will crowd the middle).
+  // Choose ONE label based on what is currently visible/active.
+  var candidates = [
+    { on: (typeof gfsSnowEnabled !== "undefined" && gfsSnowEnabled), label: "SNOW" },
+    { on: (typeof ptypeEnabled  !== "undefined" && ptypeEnabled),  label: "P-TYPE" },
+    { on: (typeof tempEnabled   !== "undefined" && tempEnabled),   label: "TEMP" },
+    { on: (typeof obsRadarEnabled !== "undefined" && obsRadarEnabled), label: "RADAR" }
+  ];
+
+  var label = "MAP";
+  for (var i=0;i<candidates.length;i++){
+    if (candidates[i].on){ label = candidates[i].label; break; }
+  }
+  pl.textContent = label;
 }
 
   function updateRadar(){
@@ -1154,6 +1228,18 @@ var overlays = {};
     setTimeLabel();
     updateRadar();
     updateAlerts();
+
+    // If GFS snow is turned on, swap the image based on the current timeline time
+    if (typeof gfsSnowEnabled !== "undefined" && gfsSnowEnabled){
+      ensureGfsSnowOverlay();
+      if (gfsSnowOverlay && map.hasLayer(gfsSnowOverlay)){
+        // already on map
+      } else if (gfsSnowOverlay){
+        gfsSnowOverlay.addTo(map);
+      }
+    }
+
+    updateProductLabel();
   }
 
   // ---------- Time controls ----------
@@ -1187,3 +1273,38 @@ var overlays = {};
 </script>
 </body>
 </html>
+  // --- GFS snow overlay state ---
+  var gfsSnowEnabled = false;
+  var gfsSnowOverlay = null;
+
+  function gfsSnowUrlForTime(t){
+    // Your repo filenames:
+    // gfs_snow/gfs_20180411_00z_f96_snow_weatherbell.png
+    // gfs_snow/gfs_20180412_00z_f72_snow_weatherbell.png
+    // gfs_snow/gfs_20180413_00z_f48_snow_weatherbell.png
+    var tms = (t instanceof Date) ? t.getTime() : new Date(t).getTime();
+
+    var t12 = Date.UTC(2018,3,12,0,0,0); // Apr 12 00Z
+    var t13 = Date.UTC(2018,3,13,0,0,0); // Apr 13 00Z
+
+    if (tms < t12) return "gfs_snow/gfs_20180411_00z_f96_snow_weatherbell.png";
+    if (tms < t13) return "gfs_snow/gfs_20180412_00z_f72_snow_weatherbell.png";
+    return "gfs_snow/gfs_20180413_00z_f48_snow_weatherbell.png";
+  }
+
+  function ensureGfsSnowOverlay(){
+    var url = gfsSnowUrlForTime(currentTimeUTC);
+    var op = currentOpacity || 0.75;
+    if (!gfsSnowOverlay){
+      gfsSnowOverlay = L.imageOverlay(url, GFS_BOUNDS, { opacity: op, interactive:false });
+      return;
+    }
+    // swap image if needed
+    var cur = gfsSnowOverlay._url || "";
+    if (cur.indexOf(url) === -1){
+      gfsSnowOverlay.setUrl(url);
+    }
+    gfsSnowOverlay.setOpacity(op);
+  }
+
+
